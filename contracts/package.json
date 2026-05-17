@@ -1,0 +1,21 @@
+{
+  "name": "apconft-contracts",
+  "private": true,
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "deploy": "npx hardhat run scripts/deploy.cjs",
+    "deploy:sepolia": "npx hardhat run scripts/deploy.cjs --network sepolia",
+    "verify:sepolia": "npx hardhat run scripts/verify-sepolia.cjs --network sepolia",
+    "verify:sepolia:collection": "npx hardhat run scripts/verify-sepolia.cjs --network sepolia collection",
+    "verify:sepolia:escrow": "npx hardhat run scripts/verify-sepolia.cjs --network sepolia escrow"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.7",
+    "hardhat": "^2.22.17"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "5.0.2"
+  }
+}

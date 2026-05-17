@@ -1,0 +1,29 @@
+{
+    "sync-rsync.options": [],
+    "sync-rsync.exclude": [
+        ".git",
+        ".gitignore",
+        "process.yml",
+        ".vscode",
+        "node_modules",
+        ".prettierrc",
+        ".eslintrc",
+        ".eslintignore",
+        "README.MD",
+        ".editorconfig"
+    ],
+    "sync-rsync.sites": [
+        {
+            "name": "RedQ Provider",
+            "localPath": "/home/miki/apconft/",
+            "remotePath": "tuki@10.77.77.166:~/payment-nft/",
+            "host": "10.77.77.166",
+            "username": "tuki",
+            "port": 22,
+            "uploadOnSave": true,
+            "watcherPattern": "**/*"
+        }
+    ],
+    "sync-rsync.onSaveIndividual": false,
+    "sync-rsync.showProgress": true
+}

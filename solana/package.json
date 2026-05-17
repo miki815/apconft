@@ -1,0 +1,21 @@
+{
+  "name": "apconft-solana",
+  "private": true,
+  "scripts": {
+    "test-ts": "ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts",
+    "vault": "tsx scripts/vault-play.ts"
+  },
+  "devDependencies": {
+    "@coral-xyz/anchor": "0.31.1",
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.95.8",
+    "@types/chai": "^4.3.11",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.0",
+    "chai": "^4.4.1",
+    "mocha": "^10.3.0",
+    "ts-mocha": "^10.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,17 @@
+node_modules/
+.env
+.DS_Store
+contracts/artifacts/
+contracts/cache/
+contracts/typechain-types/
+
+# Solana / Anchor — ignore build output but keep program keypair (declare_id)
+solana/target/*
+!solana/target/deploy/
+solana/target/deploy/*
+!solana/target/deploy/table_vault-keypair.json
+solana/.anchor/
+solana/test-ledger/
+solana/node_modules/
+solana/web/node_modules/
+solana/web/dist/

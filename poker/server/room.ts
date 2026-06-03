@@ -1,0 +1,322 @@
+import { Connection, PublicKey } from '@solana/web3.js'
+import { HoldemTable } from '../src/index.js'
+import { DEFAULT_TABLE_ID, MAX_SEATS, type YouState } from '../src/protocol.js'
+import type { PlayerAction, TableState } from '../src/types.js'
+import {
+  isSkipVaultCheck,
+  POKER_TABLE_MINT,
+  SOLANA_RPC_URL,
+} from './config.js'
+import { verifyTableVaultTx } from './vaultTx.js'
+
+export { DEFAULT_TABLE_ID, MAX_SEATS }
+
+export const SHOWDOWN_MS = 5000
+
+interface Seat {
+  playerId: string
+  stack: number
+}
+
+export interface RoomSnapshot {
+  tableId: string
+  smallBlind: number
+  bigBlind: number
+  seats: (Seat | null)[]
+  state: TableState | null
+  handInProgress: boolean
+  showdownActive: boolean
+  showdownEndsAt: number | null
+}
+
+export class PokerRoom {
+  readonly tableId: string
+  readonly smallBlind: number
+  readonly bigBlind: number
+  onTableUpdate?: () => void
+
+  private readonly seats: (Seat | null)[] = Array.from(
+    { length: MAX_SEATS },
+    () => null,
+  )
+  private table: HoldemTable | null = null
+  private lastButtonSeat = 0
+  private inShowdown = false
+  private showdownEndsAt: number | null = null
+  private showdownTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly vaultConnection = new Connection(SOLANA_RPC_URL, 'confirmed')
+  private readonly tableMint: PublicKey | null = POKER_TABLE_MINT
+    ? new PublicKey(POKER_TABLE_MINT)
+    : null
+  private readonly usedVaultTxSigs = new Set<string>()
+
+  constructor(
+    tableId: string,
+    opts?: { smallBlind?: number; bigBlind?: number },
+  ) {
+    this.tableId = tableId
+    this.smallBlind = opts?.smallBlind ?? 5
+    this.bigBlind = opts?.bigBlind ?? 10
+  }
+
+  snapshot(): RoomSnapshot {
+    const state = this.table?.getState() ?? null
+    const handInProgress =
+      this.table !== null &&
+      state !== null &&
+      (!state.handComplete || this.inShowdown)
+
+    const seats = this.seats.map((s, seatIdx) => {
+      if (!s) return null
+      if (state && (handInProgress || this.inShowdown)) {
+        const live = state.players.find((p) => p.seat === seatIdx)
+        if (live) return { playerId: s.playerId, stack: live.stack }
+      }
+      return { ...s }
+    })
+
+    return {
+      tableId: this.tableId,
+      smallBlind: this.smallBlind,
+      bigBlind: this.bigBlind,
+      seats,
+      state,
+      handInProgress,
+      showdownActive: this.inShowdown,
+      showdownEndsAt: this.showdownEndsAt,
+    }
+  }
+
+  async sit(
+    playerId: string,
+    seat: number,
+    buyIn: number,
+    lockTx?: string,
+  ): Promise<string | null> {
+    let err = this.checkSit(playerId, seat, buyIn)
+    if (err) return err
+
+    const vaultRequired = !isSkipVaultCheck() && this.tableMint !== null
+
+    if (vaultRequired) {
+      let pubkey: PublicKey
+      try {
+        pubkey = new PublicKey(playerId)
+      } catch {
+        return 'Invalid wallet address'
+      }
+
+      if (!lockTx) {
+        return 'Missing lock transaction — sign lock_for_table in wallet first'
+      }
+
+      const verifyErr = await verifyTableVaultTx(
+        this.vaultConnection,
+        lockTx,
+        pubkey,
+        this.tableMint!,
+        'lock_for_table',
+        buyIn,
+      )
+      if (verifyErr) return verifyErr
+
+      err = this.checkSit(playerId, seat, buyIn)
+      if (err) return err
+
+      const replay = this.consumeVaultTx(lockTx)
+      if (replay) return replay
+    }
+
+    this.seats[seat] = { playerId, stack: buyIn }
+    return null
+  }
+
+  /** Validates sit without requiring lock tx (preflight). */
+  checkSit(playerId: string, seat: number, buyIn: number): string | null {
+    if (!Number.isInteger(seat) || seat < 0 || seat >= MAX_SEATS) {
+      return 'Invalid seat'
+    }
+    if (!Number.isInteger(buyIn) || buyIn <= 0) return 'buyIn must be positive'
+    if (this.isHandActive()) return 'Cannot sit during a hand'
+    if (this.seats[seat]) return 'Seat taken'
+    if (this.findSeat(playerId) !== null) return 'Already seated'
+    return null
+  }
+
+  async stand(playerId: string, releaseTx?: string): Promise<string | null> {
+    if (this.isHandActive()) return 'Cannot leave during a hand'
+    const seat = this.findSeat(playerId)
+    if (seat === null) return 'Not seated'
+
+    const stack = this.currentStack(seat, playerId)
+    const vaultRequired = !isSkipVaultCheck() && this.tableMint !== null
+
+    if (vaultRequired && stack > 0) {
+      let pubkey: PublicKey
+      try {
+        pubkey = new PublicKey(playerId)
+      } catch {
+        return 'Invalid wallet address'
+      }
+
+      if (!releaseTx) {
+        return 'Missing release transaction — sign release_from_table in wallet first'
+      }
+      const replay = this.consumeVaultTx(releaseTx)
+      if (replay) return replay
+
+      const verifyErr = await verifyTableVaultTx(
+        this.vaultConnection,
+        releaseTx,
+        pubkey,
+        this.tableMint!,
+        'release_from_table',
+        stack,
+      )
+      if (verifyErr) return verifyErr
+    }
+
+    this.seats[seat] = null
+    return null
+  }
+
+  startHand(): string | null {
+    if (this.isHandActive()) return 'Hand already in progress'
+    this.removeBustedSeats()
+
+    const seated = this.seats
+      .map((s, seat) => (s ? { id: s.playerId, seat, stack: s.stack } : null))
+      .filter((x): x is { id: string; seat: number; stack: number } => x !== null)
+
+    if (seated.length < 2) return 'Need at least 2 seated players'
+
+    this.table = new HoldemTable({
+      players: seated,
+      smallBlind: this.smallBlind,
+      bigBlind: this.bigBlind,
+      buttonSeat: this.lastButtonSeat,
+    })
+
+    const r = this.table.startHand()
+    if (!r.ok) {
+      this.table = null
+      return r.error ?? 'Failed to start hand'
+    }
+
+    this.lastButtonSeat = r.state.buttonSeat
+    return null
+  }
+
+  applyAction(playerId: string, action: PlayerAction): string | null {
+    if (!this.table) return 'No hand in progress'
+    const r = this.table.applyAction(playerId, action)
+    if (!r.ok) return r.error ?? 'Invalid action'
+
+    if (r.state.handComplete) {
+      if (this.table.isShowdownReveal()) {
+        this.beginShowdown()
+      } else {
+        this.finishHand()
+      }
+    }
+    return null
+  }
+
+  youState(playerId: string): YouState {
+    const seat = this.findSeat(playerId)
+    const state = this.table?.getState() ?? null
+    let holeCards: YouState['holeCards'] = null
+    let canAct = false
+    let toCall = 0
+
+    if (this.table && seat !== null) {
+      const priv = this.table.getStateForPlayer(playerId)
+      const me = priv.players.find((p) => p.id === playerId)
+      holeCards = me?.holeCards ?? null
+      if (state && state.actionSeat === seat && me && !this.inShowdown) {
+        canAct = me.status === 'active' && me.stack > 0
+        toCall = Math.max(0, state.currentBet - me.betThisRound)
+      }
+    }
+
+    return { seat, holeCards, canAct, toCall }
+  }
+
+  private consumeVaultTx(sig: string): string | null {
+    if (this.usedVaultTxSigs.has(sig)) {
+      return 'Vault transaction already used'
+    }
+    this.usedVaultTxSigs.add(sig)
+    return null
+  }
+
+  private currentStack(seat: number, playerId: string): number {
+    const state = this.table?.getState() ?? null
+    const handInProgress =
+      this.table !== null &&
+      state !== null &&
+      (!state.handComplete || this.inShowdown)
+    if (state && (handInProgress || this.inShowdown)) {
+      const live = state.players.find((p) => p.seat === seat)
+      if (live) return live.stack
+    }
+    return this.seats[seat]?.stack ?? 0
+  }
+
+  private beginShowdown() {
+    if (this.inShowdown) return
+    this.inShowdown = true
+    this.showdownEndsAt = Date.now() + SHOWDOWN_MS
+    this.onTableUpdate?.()
+    if (this.showdownTimer) clearTimeout(this.showdownTimer)
+    this.showdownTimer = setTimeout(() => {
+      this.showdownTimer = null
+      this.finishHand()
+      this.onTableUpdate?.()
+    }, SHOWDOWN_MS)
+  }
+
+  private finishHand() {
+    if (this.showdownTimer) {
+      clearTimeout(this.showdownTimer)
+      this.showdownTimer = null
+    }
+    this.inShowdown = false
+    this.showdownEndsAt = null
+    this.syncStacksFromTable()
+    this.removeBustedSeats()
+    this.table = null
+  }
+
+  private isHandActive(): boolean {
+    if (!this.table) return false
+    if (this.inShowdown) return true
+    return !this.table.getState().handComplete
+  }
+
+  private findSeat(playerId: string): number | null {
+    const idx = this.seats.findIndex((s) => s?.playerId === playerId)
+    return idx === -1 ? null : idx
+  }
+
+  private syncStacksFromTable() {
+    if (!this.table) return
+    const state = this.table.getState()
+    for (const p of state.players) {
+      const seat = this.findSeat(p.id)
+      if (seat !== null && this.seats[seat]) {
+        this.seats[seat] = { playerId: p.id, stack: p.stack }
+      }
+    }
+  }
+
+  /** Busted players (stack 0) leave the table; no vault release needed. */
+  private removeBustedSeats() {
+    for (let seat = 0; seat < MAX_SEATS; seat++) {
+      const s = this.seats[seat]
+      if (s && s.stack <= 0) {
+        this.seats[seat] = null
+      }
+    }
+  }
+}

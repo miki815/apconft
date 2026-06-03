@@ -138,4 +138,46 @@ describe("table_vault", () => {
     assert.equal(userAfter - userBefore, net);
     assert.equal(treasuryAfter - treasuryBefore, fee);
   });
+
+  it("lock for table then release; vault SPL unchanged", async () => {
+    const userAta = getAssociatedTokenAddressSync(mint, wallet.publicKey);
+    const [userBalance] = PublicKey.findProgramAddressSync(
+      [Buffer.from("balance"), wallet.publicKey.toBuffer(), mint.toBuffer()],
+      program.programId,
+    );
+
+    const vaultBefore = BigInt((await getAccount(provider.connection, vaultToken)).amount);
+    const rowBefore = await program.account.userBalance.fetch(userBalance);
+    const balBefore = BigInt(rowBefore.amount.toString());
+
+    const lockAmount = BigInt(250_000);
+    await program.methods
+      .lockForTable(new anchor.BN(lockAmount.toString()))
+      .accounts({
+        user: wallet.publicKey,
+        mint,
+        vaultConfig,
+        userBalance,
+      })
+      .rpc();
+
+    const mid = await program.account.userBalance.fetch(userBalance);
+    assert.equal(BigInt(mid.amount.toString()), balBefore - lockAmount);
+
+    await program.methods
+      .releaseFromTable(new anchor.BN(lockAmount.toString()))
+      .accounts({
+        user: wallet.publicKey,
+        mint,
+        vaultConfig,
+        userBalance,
+      })
+      .rpc();
+
+    const rowAfter = await program.account.userBalance.fetch(userBalance);
+    assert.equal(BigInt(rowAfter.amount.toString()), balBefore);
+
+    const vaultAfter = BigInt((await getAccount(provider.connection, vaultToken)).amount);
+    assert.equal(vaultAfter, vaultBefore);
+  });
 });

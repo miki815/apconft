@@ -123,6 +123,37 @@ pub mod table_vault {
         Ok(())
     }
 
+    /// Lock chips from vault balance for a table buy-in (accounting only; SPL stays in vault ATA).
+    pub fn lock_for_table(ctx: Context<TableBalance>, amount: u64) -> Result<()> {
+        require!(amount > 0, ErrorCode::ZeroAmount);
+
+        let ub = &mut ctx.accounts.user_balance;
+        require!(ub.user == ctx.accounts.user.key(), ErrorCode::Unauthorized);
+        require!(ub.amount >= amount, ErrorCode::InsufficientBalance);
+
+        ub.amount = ub
+            .amount
+            .checked_sub(amount)
+            .ok_or(ErrorCode::InsufficientBalance)?;
+
+        Ok(())
+    }
+
+    /// Return chips from table back to vault balance (accounting only).
+    pub fn release_from_table(ctx: Context<TableBalance>, amount: u64) -> Result<()> {
+        require!(amount > 0, ErrorCode::ZeroAmount);
+
+        let ub = &mut ctx.accounts.user_balance;
+        require!(ub.user == ctx.accounts.user.key(), ErrorCode::Unauthorized);
+
+        ub.amount = ub
+            .amount
+            .checked_add(amount)
+            .ok_or(ErrorCode::Overflow)?;
+
+        Ok(())
+    }
+
     /// Authority updates withdrawal fee (basis points).
     pub fn set_fee_bps(ctx: Context<UpdateAuthority>, fee_bps: u16) -> Result<()> {
         require!(fee_bps <= 10_000, ErrorCode::FeeTooHigh);
@@ -227,6 +258,24 @@ pub struct Withdraw<'info> {
     )]
     pub treasury_token: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct TableBalance<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub mint: Account<'info, Mint>,
+    #[account(
+        seeds = [b"config", mint.key().as_ref()],
+        bump = vault_config.bump,
+    )]
+    pub vault_config: Account<'info, VaultConfig>,
+    #[account(
+        mut,
+        seeds = [b"balance", user.key().as_ref(), mint.key().as_ref()],
+        bump = user_balance.bump,
+    )]
+    pub user_balance: Account<'info, UserBalance>,
 }
 
 #[derive(Accounts)]

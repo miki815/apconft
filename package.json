@@ -12,7 +12,11 @@
     "solana:build": "cd solana && anchor build",
     "solana:test": "cd solana && anchor test",
     "solana:web": "npm run dev --prefix solana/web",
-    "solana:copy-idl-web": "npm run copy-idl --prefix solana/web"
+    "solana:copy-idl-web": "npm run copy-idl --prefix solana/web",
+    "poker:test": "npm test --prefix poker",
+    "poker:server": "npm run server --prefix poker",
+    "vault:mint-setup": "npm run vault --prefix solana -- mint-setup",
+    "vault:mint": "npm run vault --prefix solana -- mint"
   },
   "dependencies": {
     "axios": "^1.7.9",

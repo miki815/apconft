@@ -4,7 +4,9 @@
  * Pokretanje iz foldera solana/ (mora postojati target/idl/table_vault.json → anchor build):
  *
  *   export ANCHOR_PROVIDER_URL=https://api.devnet.solana.com   # ili http://127.0.0.1:8899
+ *   npm run vault -- mint-setup          # mint + vault init + 1000 tokens + .env snippet
  *   npm run vault -- demo
+ *   npm run vault -- mint <MINT> <AMOUNT_HUMAN> [RECIPIENT_PUBKEY]
  *
  *   npm run vault -- init <MINT_PUBKEY> <TREASURY_OWNER_PUBKEY> <FEE_BPS>
  *   npm run vault -- deposit <MINT_PUBKEY> <AMOUNT_RAW>
@@ -23,6 +25,7 @@ import {
   createMint,
   getAccount,
   getAssociatedTokenAddressSync,
+  getMint,
   mintTo,
 } from "@solana/spl-token";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
@@ -30,7 +33,9 @@ import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@sol
 function usage(): never {
   console.error(`
 Usage (from ./solana):
+  npm run vault -- mint-setup
   npm run vault -- demo
+  npm run vault -- mint <mint> <amount_human> [recipient_pubkey]
   npm run vault -- init <mint> <treasury_owner_pubkey> <fee_bps>
   npm run vault -- deposit <mint> <amount_raw_u64>
   npm run vault -- withdraw <mint> <amount_raw_u64>
@@ -195,6 +200,67 @@ async function cmdWithdraw(
   console.log("withdraw tx:", sig)
 }
 
+async function cmdMint(
+  provider: anchor.AnchorProvider,
+  mintStr: string,
+  amountHumanStr: string,
+  recipientStr?: string,
+) {
+  const mint = new PublicKey(mintStr)
+  const amountHuman = parseFloat(amountHumanStr.replace(",", "."))
+  if (!Number.isFinite(amountHuman) || amountHuman <= 0) {
+    throw new Error("amount must be a positive number")
+  }
+  const wallet = provider.wallet as anchor.Wallet
+  const payer = wallet.payer
+  const recipient = new PublicKey(recipientStr ?? wallet.publicKey.toBase58())
+  const mintInfo = await getMint(provider.connection, mint)
+  const raw = BigInt(Math.round(amountHuman * 10 ** mintInfo.decimals))
+  const recipientAta = await ensureAta(provider, payer, recipient, mint)
+  await mintTo(provider.connection, payer, mint, recipientAta, wallet.publicKey, raw)
+  console.log(`Minted ${amountHuman} tokens to`, recipient.toBase58())
+  console.log("Recipient ATA:", recipientAta.toBase58())
+  console.log("(mint authority / fee payer:", wallet.publicKey.toBase58() + ")")
+}
+
+async function cmdMintSetup(
+  provider: anchor.AnchorProvider,
+  program: anchor.Program,
+) {
+  const wallet = provider.wallet as anchor.Wallet
+  const payer = wallet.payer
+
+  console.log("Wallet:", wallet.publicKey.toBase58())
+  const mint = await createMint(provider.connection, payer, wallet.publicKey, null, 6)
+  console.log("Test mint (6 decimals):", mint.toBase58())
+
+  const treasury = wallet.publicKey
+  await cmdInit(provider, program, mint.toBase58(), treasury.toBase58(), 100)
+
+  const humanAmount = 1000
+  const raw = humanAmount * 1_000_000
+  const userAta = await ensureAta(provider, payer, wallet.publicKey, mint)
+  await mintTo(provider.connection, payer, mint, userAta, wallet.publicKey, raw)
+  console.log(`Minted ${humanAmount} tokens to wallet ATA`)
+
+  const depositRaw = 500 * 1_000_000
+  await cmdDeposit(provider, program, mint.toBase58(), String(depositRaw))
+  console.log("Deposited 500 into table vault (for poker buy-in)")
+
+  console.log(`
+--- Dodaj u solana/web/.env ---
+VITE_MINT=${mint.toBase58()}
+
+--- Pokreni poker server sa istim mint-om ---
+POKER_TABLE_MINT=${mint.toBase58()}
+SOLANA_RPC_URL=${process.env.ANCHOR_PROVIDER_URL || "https://api.devnet.solana.com"}
+
+--- Zatim ---
+cd solana/web && npm run dev
+npm run poker:server   # iz root apconft
+`)
+}
+
 async function cmdDemo(provider: anchor.AnchorProvider, program: anchor.Program) {
   const wallet = provider.wallet as anchor.Wallet
   const payer = wallet.payer
@@ -245,8 +311,17 @@ async function main() {
   const program = loadProgram(provider)
 
   const cmd = argv[0]
+  if (cmd === "mint-setup") {
+    await cmdMintSetup(provider, program)
+    return
+  }
   if (cmd === "demo") {
     await cmdDemo(provider, program)
+    return
+  }
+  if (cmd === "mint") {
+    if (argv.length < 3) usage()
+    await cmdMint(provider, argv[1], argv[2], argv[3])
     return
   }
   if (cmd === "init") {

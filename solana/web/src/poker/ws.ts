@@ -299,9 +299,6 @@ export function preflightSitMessage(
   buyIn: number,
 ): string | null {
   if (!table) return 'Nema podataka o stolu — sačekaj konekciju'
-  if (table.handInProgress || table.showdownActive) {
-    return 'Ne možeš da sedneš tokom ruke'
-  }
   if (table.you.seat !== null) return 'Već si za stolom'
   if (table.seats[pickSeat]) return `Mesto ${pickSeat + 1} je zauzeto`
   if (!Number.isInteger(buyIn) || buyIn <= 0) return 'Unesi ispravan buy-in'

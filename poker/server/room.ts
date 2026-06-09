@@ -295,6 +295,13 @@ export class PokerRoom {
     this.syncStacksFromTable()
     this.removeBustedSeats()
     this.table = null
+    this.tryAutoStartNextHandAfterFinish()
+  }
+
+  private tryAutoStartNextHandAfterFinish(): void {
+    if (this.isHandActive()) return
+    if (this.seats.filter(Boolean).length < 2) return
+    this.startHand()
   }
 
   private isHandActive(): boolean {

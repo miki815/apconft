@@ -127,7 +127,9 @@ export class PokerRoom {
       if (replay) return replay
     }
 
+    const seatedBefore = this.seats.filter(Boolean).length
     this.seats[seat] = { playerId, stack: buyIn }
+    this.tryAutoStartHand(seatedBefore)
     return null
   }
 
@@ -242,6 +244,13 @@ export class PokerRoom {
     return { seat, holeCards, canAct, toCall }
   }
 
+  private tryAutoStartHand(seatedBefore: number): void {
+    if (this.isHandActive()) return
+    if (seatedBefore >= 2) return
+    if (this.seats.filter(Boolean).length < 2) return
+    this.startHand()
+  }
+
   private consumeVaultTx(sig: string): string | null {
     if (this.usedVaultTxSigs.has(sig)) {
       return 'Vault transaction already used'
@@ -286,6 +295,13 @@ export class PokerRoom {
     this.syncStacksFromTable()
     this.removeBustedSeats()
     this.table = null
+    this.tryAutoStartNextHandAfterFinish()
+  }
+
+  private tryAutoStartNextHandAfterFinish(): void {
+    if (this.isHandActive()) return
+    if (this.seats.filter(Boolean).length < 2) return
+    this.startHand()
   }
 
   private isHandActive(): boolean {

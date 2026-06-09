@@ -4,6 +4,38 @@ import { PokerRoom, SHOWDOWN_MS } from './room.js'
 
 process.env.POKER_SKIP_VAULT_CHECK = '1'
 
+const noTimer = { actionTimeoutMs: 0 }
+const fastTimer = { actionTimeoutMs: 20 }
+const timerWait = fastTimer.actionTimeoutMs! + 50
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+const flushTimers = () => new Promise<void>((r) => setImmediate(r))
+
+async function waitForActionTimer() {
+  await sleep(timerWait)
+  await flushTimers()
+}
+
+async function waitUntilActionSeatChanges(
+  room: PokerRoom,
+  seatBefore: number,
+  maxMs = 200,
+) {
+  const deadline = Date.now() + maxMs
+  while (Date.now() < deadline) {
+    await flushTimers()
+    const state = room.snapshot().state
+    if (state && state.actionSeat !== seatBefore) return state
+    await sleep(10)
+  }
+  return room.snapshot().state!
+}
+
+function stopRoomTimer(room: PokerRoom) {
+  ;(room as unknown as { clearActionTimer(): void }).clearActionTimer()
+}
+
 function finishHandByFold(room: PokerRoom) {
   const state = room.snapshot().state!
   const first = state.players.find((p) => p.seat === state.actionSeat)!
@@ -16,9 +48,22 @@ function finishHandByFold(room: PokerRoom) {
   }
 }
 
+async function playToFlop(room: PokerRoom) {
+  for (let i = 0; i < 60; i++) {
+    const st = room.snapshot().state
+    if (!st || st.bettingRound === 'flop') return st
+    if (st.handComplete || st.actionSeat === null) break
+    const p = st.players.find((x) => x.seat === st.actionSeat)
+    if (!p) break
+    const toCall = st.currentBet - p.betThisRound
+    room.applyAction(p.id, toCall > 0 ? { type: 'call' } : { type: 'check' })
+  }
+  return room.snapshot().state
+}
+
 describe('PokerRoom', () => {
   it('sit, start hand, fold wins', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     assert.equal(await room.sit('a', 0, 500), null)
     assert.equal(await room.sit('b', 1, 500), null)
 
@@ -44,7 +89,7 @@ describe('PokerRoom', () => {
   })
 
   it('enters showdown phase with revealed cards', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 200)
     await room.sit('b', 1, 200)
 
@@ -74,21 +119,21 @@ describe('PokerRoom', () => {
   })
 
   it('stand clears seat without vault tx when skip enabled', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     assert.equal(await room.stand('a'), null)
     assert.equal(room.snapshot().seats[0], null)
   })
 
   it('checkSit rejects taken seat before lock', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     assert.equal(room.checkSit('b', 0, 200), 'Seat taken')
     assert.equal(room.checkSit('a', 1, 200), 'Already seated')
   })
 
   it('removes busted player after hand ends', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
 
@@ -100,7 +145,7 @@ describe('PokerRoom', () => {
     room.applyAction(second.id, { type: 'call' })
 
     if (room.snapshot().showdownActive) {
-      await new Promise((r) => setTimeout(r, SHOWDOWN_MS + 100))
+      await sleep(SHOWDOWN_MS + 100)
     }
 
     const end = room.snapshot()
@@ -114,14 +159,14 @@ describe('PokerRoom', () => {
   })
 
   it('first sit does not auto-start', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     assert.equal(await room.sit('a', 0, 500), null)
     assert.equal(room.snapshot().handInProgress, false)
     assert.equal(room.snapshot().state, null)
   })
 
   it('second sit auto-starts hand', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     assert.equal(await room.sit('b', 1, 500), null)
     const snap = room.snapshot()
@@ -131,14 +176,14 @@ describe('PokerRoom', () => {
   })
 
   it('manual startHand after auto-start rejects duplicate', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
     assert.equal(room.startHand(), 'Hand already in progress')
   })
 
   it('third sit after hand ends blocked while auto-next hand runs', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
     assert.equal(room.snapshot().handInProgress, true)
@@ -152,7 +197,7 @@ describe('PokerRoom', () => {
   })
 
   it('auto-starts next hand after fold with two seated', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
 
@@ -166,7 +211,7 @@ describe('PokerRoom', () => {
   })
 
   it('does not auto-start next hand when one seated remains', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
 
@@ -177,7 +222,7 @@ describe('PokerRoom', () => {
     room.applyAction(second.id, { type: 'call' })
 
     if (room.snapshot().showdownActive) {
-      await new Promise((r) => setTimeout(r, SHOWDOWN_MS + 100))
+      await sleep(SHOWDOWN_MS + 100)
     }
 
     const end = room.snapshot()
@@ -187,7 +232,7 @@ describe('PokerRoom', () => {
   })
 
   it('manual startHand after auto-next rejects duplicate', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
     finishHandByFold(room)
@@ -196,7 +241,7 @@ describe('PokerRoom', () => {
   })
 
   it('failed sit does not auto-start', async () => {
-    const room = new PokerRoom('test')
+    const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     assert.equal(room.snapshot().handInProgress, false)
 
@@ -206,5 +251,236 @@ describe('PokerRoom', () => {
     assert.notEqual(await room.sit('a', 1, 200), null)
     assert.equal(room.snapshot().handInProgress, false)
     assert.equal(room.snapshot().seats.filter(Boolean).length, 1)
+  })
+})
+
+describe('PokerRoom action timeout', () => {
+  it('auto-checks when toCall is 0 and timeout expires', async () => {
+    const room = new PokerRoom('test', fastTimer)
+    try {
+      await room.sit('a', 0, 500)
+      await room.sit('b', 1, 500)
+
+      const flop = await playToFlop(room)
+      assert.ok(flop)
+      assert.equal(flop!.bettingRound, 'flop')
+
+      const st = room.snapshot().state!
+      const actor = st.players.find((p) => p.seat === st.actionSeat)!
+      assert.equal(st.currentBet - actor.betThisRound, 0)
+
+      const seatBefore = st.actionSeat
+      await waitForActionTimer()
+
+      const after = room.snapshot().state!
+      const actorAfter = after.players.find((p) => p.seat === seatBefore)!
+      assert.notEqual(actorAfter.status, 'folded')
+      assert.ok(
+        after.actionSeat !== seatBefore ||
+          after.bettingRound !== 'flop' ||
+          after.handComplete,
+      )
+    } finally {
+      stopRoomTimer(room)
+    }
+  })
+
+  it('auto-folds when toCall is positive and timeout expires', async () => {
+    const room = new PokerRoom('test', fastTimer)
+    try {
+      await room.sit('a', 0, 500)
+      await room.sit('b', 1, 500)
+
+      const st = room.snapshot().state!
+      const seatBefore = st.actionSeat!
+      const actor = st.players.find((p) => p.seat === seatBefore)!
+      assert.ok(st.currentBet - actor.betThisRound > 0)
+
+      await waitUntilActionSeatChanges(room, seatBefore)
+
+      const after = room.snapshot().state!
+      assert.notEqual(after.actionSeat, seatBefore)
+    } finally {
+      stopRoomTimer(room)
+    }
+  })
+
+  it('resets timer after manual action', async () => {
+    const room = new PokerRoom('test', fastTimer)
+    try {
+      await room.sit('a', 0, 500)
+      await room.sit('b', 1, 500)
+
+      await sleep(5)
+      const st = room.snapshot().state!
+      const actor = st.players.find((p) => p.seat === st.actionSeat)!
+      const toCall = st.currentBet - actor.betThisRound
+      assert.equal(
+        room.applyAction(
+          actor.id,
+          toCall > 0 ? { type: 'call' } : { type: 'check' },
+        ),
+        null,
+      )
+
+      const mid = room.snapshot().state!
+      const nextActor = mid.players.find((p) => p.seat === mid.actionSeat)!
+      assert.notEqual(nextActor.id, actor.id)
+      assert.notEqual(nextActor.status, 'folded')
+
+      await waitForActionTimer()
+
+      const after = room.snapshot().state!
+      const original = after.players.find((p) => p.id === actor.id)!
+      assert.notEqual(original.status, 'folded')
+    } finally {
+      stopRoomTimer(room)
+    }
+  })
+
+  it('clears timer when hand ends by fold', async () => {
+    const room = new PokerRoom('test', fastTimer)
+    try {
+      await room.sit('a', 0, 500)
+      await room.sit('b', 1, 500)
+
+      finishHandByFold(room)
+      assert.equal(room.snapshot().handInProgress, true)
+      assert.equal(room.snapshot().state!.bettingRound, 'preflop')
+
+      await waitForActionTimer()
+
+      const after = room.snapshot()
+      assert.equal(after.handInProgress, true)
+      assert.equal(after.state!.handComplete, false)
+      assert.equal(after.state!.bettingRound, 'preflop')
+      const total = after.seats.reduce((n, s) => n + (s?.stack ?? 0), 0)
+      assert.equal(total, 1000 - room.smallBlind - room.bigBlind)
+    } finally {
+      stopRoomTimer(room)
+    }
+  })
+
+  it('does not act during showdown display', async () => {
+    const room = new PokerRoom('test', fastTimer)
+    try {
+      await room.sit('a', 0, 200)
+      await room.sit('b', 1, 200)
+
+      for (let i = 0; i < 60; i++) {
+        const snap = room.snapshot()
+        const st = snap.state
+        if (!st) break
+        if (st.handComplete) {
+          assert.equal(snap.showdownActive, true)
+          await waitForActionTimer()
+          const still = room.snapshot()
+          assert.equal(still.showdownActive, true)
+          assert.equal(still.state!.handComplete, true)
+          return
+        }
+        if (st.actionSeat === null) break
+        const p = st.players.find((x) => x.seat === st.actionSeat)
+        if (!p) break
+        const toCall = st.currentBet - p.betThisRound
+        room.applyAction(
+          p.id,
+          toCall > 0 ? { type: 'call' } : { type: 'check' },
+        )
+      }
+      assert.fail('expected showdown')
+    } finally {
+      stopRoomTimer(room)
+    }
+  })
+
+  it('auto-start and auto-next still work with action timer enabled', async () => {
+    const room = new PokerRoom('test', fastTimer)
+    try {
+      await room.sit('a', 0, 500)
+      assert.equal(room.snapshot().handInProgress, false)
+
+      await room.sit('b', 1, 500)
+      assert.equal(room.snapshot().handInProgress, true)
+      assert.notEqual(room.snapshot().state!.actionSeat, null)
+
+      finishHandByFold(room)
+      const snap = room.snapshot()
+      assert.equal(snap.handInProgress, true)
+      assert.equal(snap.state!.handComplete, false)
+      assert.equal(snap.state!.bettingRound, 'preflop')
+      assert.notEqual(snap.state!.actionSeat, null)
+    } finally {
+      stopRoomTimer(room)
+    }
+  })
+
+  it('does not double-act when player already acted manually', async () => {
+    const room = new PokerRoom('test', fastTimer)
+    try {
+      await room.sit('a', 0, 500)
+      await room.sit('b', 1, 500)
+
+      await sleep(5)
+      const st = room.snapshot().state!
+      const actor = st.players.find((p) => p.seat === st.actionSeat)!
+      const toCall = st.currentBet - actor.betThisRound
+      assert.equal(
+        room.applyAction(
+          actor.id,
+          toCall > 0 ? { type: 'call' } : { type: 'check' },
+        ),
+        null,
+      )
+
+      const mid = room.snapshot().state!
+      const stacksAfterManual = mid.players.map((p) => ({
+        id: p.id,
+        stack: p.stack,
+        status: p.status,
+      }))
+
+      await sleep(timerWait * 2)
+      await flushTimers()
+
+      const after = room.snapshot().state!
+      for (const before of stacksAfterManual) {
+        const now = after.players.find((p) => p.id === before.id)!
+        if (before.id === actor.id) {
+          assert.notEqual(now.status, 'folded')
+        }
+        assert.equal(now.stack, before.stack)
+        assert.equal(now.status, before.status)
+      }
+    } finally {
+      stopRoomTimer(room)
+    }
+  })
+
+  it('stale seq guard ignores superseded timeout callback', async () => {
+    const room = new PokerRoom('test', fastTimer)
+    try {
+      await room.sit('a', 0, 500)
+      await room.sit('b', 1, 500)
+
+      const st = room.snapshot().state!
+      const actor = st.players.find((p) => p.seat === st.actionSeat)!
+      assert.ok(st.currentBet - actor.betThisRound > 0)
+
+      await sleep(5)
+      assert.equal(room.applyAction(actor.id, { type: 'call' }), null)
+
+      const mid = room.snapshot().state!
+      const actorAfterCall = mid.players.find((p) => p.id === actor.id)!
+      assert.notEqual(actorAfterCall.status, 'folded')
+
+      await waitForActionTimer()
+
+      const after = room.snapshot().state!
+      const actorFinal = after.players.find((p) => p.id === actor.id)!
+      assert.notEqual(actorFinal.status, 'folded')
+    } finally {
+      stopRoomTimer(room)
+    }
   })
 })

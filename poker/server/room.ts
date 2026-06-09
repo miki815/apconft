@@ -361,7 +361,7 @@ export class PokerRoom {
       toCall > 0 ? { type: 'fold' } : { type: 'check' }
 
     const err = this.applyAction(player.id, action)
-    if (!err) this.onTableUpdate?.()
+    if (!err && !this.inShowdown) this.onTableUpdate?.()
   }
 
   private beginShowdown() {

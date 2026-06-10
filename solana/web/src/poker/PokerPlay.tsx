@@ -30,8 +30,18 @@ export function PokerPlay() {
   const wallet = useAnchorWallet()
   const { connection } = useConnection()
   const playerId = wallet?.publicKey?.toBase58() ?? null
-  const { connected, table, error, checkSit, sitAndWait, stand, startHand, act } =
-    usePokerWs(playerId)
+  const {
+    connected,
+    table,
+    error,
+    checkSit,
+    sitAndWait,
+    checkAddChips,
+    addChipsAndWait,
+    stand,
+    startHand,
+    act,
+  } = usePokerWs(playerId)
 
   const [pickSeat, setPickSeat] = useState(0)
   const [buyIn, setBuyIn] = useState('200')
@@ -115,9 +125,16 @@ export function PokerPlay() {
   const showBoard =
     table?.handInProgress || board.length > 0 || showdownPhase
   const maxBuyIn = mySeat !== null ? 0 : (vaultChips ?? 0)
-  const buyInNum = parseInt(buyIn, 10)
+  const maxAddChips = mySeat !== null ? (vaultChips ?? 0) : 0
+  const chipAmountNum = parseInt(buyIn, 10)
   const buyInValid =
-    Number.isInteger(buyInNum) && buyInNum > 0 && buyInNum <= maxBuyIn
+    Number.isInteger(chipAmountNum) &&
+    chipAmountNum > 0 &&
+    chipAmountNum <= maxBuyIn
+  const addChipsValid =
+    Number.isInteger(chipAmountNum) &&
+    chipAmountNum > 0 &&
+    chipAmountNum <= maxAddChips
   const vaultTxReady = SKIP_VAULT || (!!idl && !!mintPk)
 
   const myStack = useMemo(() => {
@@ -128,14 +145,15 @@ export function PokerPlay() {
   }, [table, mySeat])
 
   useEffect(() => {
-    if (maxBuyIn > 0) {
+    const cap = mySeat !== null ? maxAddChips : maxBuyIn
+    if (cap > 0) {
       setBuyIn((prev) => {
         const n = parseInt(prev, 10)
-        if (!Number.isFinite(n) || n <= 0) return String(Math.min(200, maxBuyIn))
-        return String(Math.min(n, maxBuyIn))
+        if (!Number.isFinite(n) || n <= 0) return String(Math.min(200, cap))
+        return String(Math.min(n, cap))
       })
     }
-  }, [maxBuyIn])
+  }, [maxBuyIn, maxAddChips, mySeat])
 
   const holeCards = useMemo(() => {
     if (table?.you.holeCards?.length === 2) return table.you.holeCards
@@ -144,22 +162,16 @@ export function PokerPlay() {
     return me?.holeCards ?? []
   }, [table, mySeat])
 
-  const handleSit = async () => {
-    if (!buyInValid || !wallet || !connected) return
-
-    const localErr = preflightSitMessage(table, pickSeat, buyInNum)
-    if (localErr) {
-      setTxMsg(localErr)
-      return
-    }
+  const handleAddChips = async () => {
+    if (!addChipsValid || !wallet || !connected || mySeat === null) return
 
     setBusy(true)
     setTxMsg(null)
     let locked = false
 
     try {
-      setTxMsg('Provera mesta…')
-      const preErr = await checkSit(pickSeat, buyInNum)
+      setTxMsg('Provera dopune…')
+      const preErr = await checkAddChips(chipAmountNum)
       if (preErr) {
         setTxMsg(preErr)
         return
@@ -174,17 +186,18 @@ export function PokerPlay() {
           programId,
           mintPk,
           idl,
-          buyInNum,
+          chipAmountNum,
         )
         locked = true
       }
 
-      setTxMsg('Sedanje za stolom…')
-      const sitErr = await sitAndWait(pickSeat, buyInNum, lockTx)
-      if (sitErr) {
+      setTxMsg('Dopuna chipova…')
+      const addResult = await addChipsAndWait(chipAmountNum, lockTx)
+      if ('error' in addResult) {
+        const addErr = addResult.error
         if (locked && idl && mintPk) {
           setTxMsg(
-            `${sitErr} — vraćamo ${buyInNum} čipova u vault, potpiši u novčaniku…`,
+            `${addErr} — vraćamo ${chipAmountNum} čipova u vault, potpiši u novčaniku…`,
           )
           try {
             await releaseFromTable(
@@ -193,14 +206,119 @@ export function PokerPlay() {
               programId,
               mintPk,
               idl,
-              buyInNum,
+              chipAmountNum,
             )
             setTxMsg(
-              `Sedanje nije uspelo (${sitErr}). Buy-in od ${buyInNum} čipova vraćen u vault.`,
+              `Dopuna nije uspela (${addErr}). ${chipAmountNum} čipova vraćeno u vault.`,
+            )
+          } catch {
+            setTxMsg(
+              `Dopuna nije uspela (${addErr}). ${chipAmountNum} je zaključano — potpiši release u novčaniku ili pokušaj ponovo.`,
+            )
+          }
+        } else {
+          setTxMsg(`Dopuna nije uspela: ${addErr}`)
+        }
+        void refreshVault()
+        return
+      }
+
+      if (addResult.appliesFromNextHand) {
+        setTxMsg(
+          `Dopuna od ${chipAmountNum} čipova primljena. Važi od sledeće ruke.`,
+        )
+      } else {
+        setTxMsg(`Dopuna od ${chipAmountNum} čipova uspešna.`)
+      }
+      void refreshVault()
+    } catch (e) {
+      if (locked && idl && mintPk) {
+        setTxMsg(
+          'Lock je prošao, ali dopuna nije završena — pokušavamo vraćanje u vault…',
+        )
+        try {
+          await releaseFromTable(
+            connection,
+            wallet,
+            programId,
+            mintPk,
+            idl,
+            chipAmountNum,
+          )
+          setTxMsg(
+            `Greška pri dopuni. ${chipAmountNum} čipova vraćeno u vault.`,
+          )
+        } catch {
+          setTxMsg(
+            `Greška: ${e instanceof Error ? e.message : String(e)}. ${chipAmountNum} možda je i dalje zaključano — proveri vault.`,
+          )
+        }
+        void refreshVault()
+      } else {
+        setTxMsg(e instanceof Error ? e.message : String(e))
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleSit = async () => {
+    if (!buyInValid || !wallet || !connected) return
+
+    const localErr = preflightSitMessage(table, pickSeat, chipAmountNum)
+    if (localErr) {
+      setTxMsg(localErr)
+      return
+    }
+
+    setBusy(true)
+    setTxMsg(null)
+    let locked = false
+
+    try {
+      setTxMsg('Provera mesta…')
+      const preErr = await checkSit(pickSeat, chipAmountNum)
+      if (preErr) {
+        setTxMsg(preErr)
+        return
+      }
+
+      let lockTx: string | undefined
+      if (!SKIP_VAULT && idl && mintPk) {
+        setTxMsg('Potpiši lock u novčaniku…')
+        lockTx = await lockForTable(
+          connection,
+          wallet,
+          programId,
+          mintPk,
+          idl,
+          chipAmountNum,
+        )
+        locked = true
+      }
+
+      setTxMsg('Sedanje za stolom…')
+      const sitErr = await sitAndWait(pickSeat, chipAmountNum, lockTx)
+      if (sitErr) {
+        if (locked && idl && mintPk) {
+          setTxMsg(
+            `${sitErr} — vraćamo ${chipAmountNum} čipova u vault, potpiši u novčaniku…`,
+          )
+          try {
+            await releaseFromTable(
+              connection,
+              wallet,
+              programId,
+              mintPk,
+              idl,
+              chipAmountNum,
+            )
+            setTxMsg(
+              `Sedanje nije uspelo (${sitErr}). Buy-in od ${chipAmountNum} čipova vraćen u vault.`,
             )
           } catch (refundErr) {
             setTxMsg(
-              `Sedanje nije uspelo (${sitErr}). Buy-in od ${buyInNum} je zaključan — potpiši release u novčaniku (Vault → isti iznos) ili pokušaj ponovo.`,
+              `Sedanje nije uspelo (${sitErr}). Buy-in od ${chipAmountNum} je zaključan — potpiši release u novčaniku (Vault → isti iznos) ili pokušaj ponovo.`,
             )
             if (refundErr instanceof Error) {
               setTxMsg((m) => `${m} (${refundErr.message})`)
@@ -227,14 +345,14 @@ export function PokerPlay() {
             programId,
             mintPk,
             idl,
-            buyInNum,
+            chipAmountNum,
           )
           setTxMsg(
-            `Greška pri sedenju. Buy-in od ${buyInNum} čipova vraćen u vault.`,
+            `Greška pri sedenju. Buy-in od ${chipAmountNum} čipova vraćen u vault.`,
           )
         } catch {
           setTxMsg(
-            `Greška: ${e instanceof Error ? e.message : String(e)}. Buy-in od ${buyInNum} možda je i dalje zaključan — proveri vault.`,
+            `Greška: ${e instanceof Error ? e.message : String(e)}. Buy-in od ${chipAmountNum} možda je i dalje zaključan — proveri vault.`,
           )
         }
         void refreshVault()
@@ -569,7 +687,11 @@ export function PokerPlay() {
         )}
         <div className="row row--compact">
           <div>
-            <label>Buy-in (max {maxBuyIn})</label>
+            <label>
+              {mySeat !== null
+                ? `Dopuna (max ${maxAddChips})`
+                : `Buy-in (max ${maxBuyIn})`}
+            </label>
             <input
               type="text"
               value={buyIn}
@@ -580,44 +702,78 @@ export function PokerPlay() {
                   return
                 }
                 const n = parseInt(v, 10)
-                if (n > maxBuyIn) {
-                  setBuyIn(String(maxBuyIn))
+                const cap = mySeat !== null ? maxAddChips : maxBuyIn
+                if (n > cap) {
+                  setBuyIn(String(cap))
                 } else {
                   setBuyIn(v)
                 }
               }}
               disabled={
-                !playerId || !connected || mySeat !== null || maxBuyIn <= 0 || busy
+                !playerId ||
+                !connected ||
+                busy ||
+                (mySeat !== null ? maxAddChips <= 0 : maxBuyIn <= 0)
               }
             />
           </div>
         </div>
         <div className="btn-row">
-          <button
-            type="button"
-            className="secondary"
-            disabled={maxBuyIn <= 0 || mySeat !== null || busy}
-            onClick={() => setBuyIn(String(maxBuyIn))}
-          >
-            Max ({maxBuyIn})
-          </button>
-          <button
-            type="button"
-            className="primary"
-            disabled={
-              !playerId ||
-              !connected ||
-              mySeat !== null ||
-              !buyInValid ||
-              maxBuyIn <= 0 ||
-              !mintPk ||
-              !vaultTxReady ||
-              busy
-            }
-            onClick={() => void handleSit()}
-          >
-            {busy ? 'Potpis…' : `Sedni · mesto ${pickSeat + 1}`}
-          </button>
+          {mySeat !== null ? (
+            <>
+              <button
+                type="button"
+                className="secondary"
+                disabled={maxAddChips <= 0 || busy}
+                onClick={() => setBuyIn(String(maxAddChips))}
+              >
+                Max ({maxAddChips})
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={
+                  !playerId ||
+                  !connected ||
+                  !addChipsValid ||
+                  maxAddChips <= 0 ||
+                  !mintPk ||
+                  !vaultTxReady ||
+                  busy
+                }
+                onClick={() => void handleAddChips()}
+              >
+                {busy ? 'Potpis…' : 'Dopuni chipove'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="secondary"
+                disabled={maxBuyIn <= 0 || busy}
+                onClick={() => setBuyIn(String(maxBuyIn))}
+              >
+                Max ({maxBuyIn})
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={
+                  !playerId ||
+                  !connected ||
+                  !buyInValid ||
+                  maxBuyIn <= 0 ||
+                  !mintPk ||
+                  !vaultTxReady ||
+                  busy
+                }
+                onClick={() => void handleSit()}
+              >
+                {busy ? 'Potpis…' : `Sedni · mesto ${pickSeat + 1}`}
+              </button>
+            </>
+          )}
           <button
             type="button"
             className="secondary"

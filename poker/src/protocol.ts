@@ -5,6 +5,8 @@ export type ClientMessage =
   | { type: 'join'; playerId: string; tableId?: string }
   | { type: 'sit-check'; seat: number; buyIn: number }
   | { type: 'sit'; seat: number; buyIn: number; lockTx?: string }
+  | { type: 'add-chips-check'; amount: number }
+  | { type: 'add-chips'; amount: number; lockTx?: string }
   | { type: 'stand'; releaseTx?: string }
   | { type: 'start-hand' }
   | { type: 'action'; action: PlayerAction }
@@ -18,6 +20,8 @@ export interface SeatInfo {
 export type ServerMessage =
   | { type: 'joined'; tableId: string; playerId: string }
   | { type: 'sit-check-ok'; seat: number; buyIn: number }
+  | { type: 'add-chips-check-ok'; amount: number }
+  | { type: 'add-chips-ok'; amount: number; appliesFromNextHand: boolean }
   | {
       type: 'table'
       tableId: string

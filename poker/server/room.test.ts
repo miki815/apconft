@@ -36,6 +36,47 @@ function stopRoomTimer(room: PokerRoom) {
   ;(room as unknown as { clearActionTimer(): void }).clearActionTimer()
 }
 
+type SeatInternal = {
+  playerId: string
+  stack: number
+  pendingStackAdd: number
+}
+
+function roomSeats(room: PokerRoom): (SeatInternal | null)[] {
+  return (room as unknown as { seats: (SeatInternal | null)[] }).seats
+}
+
+function applyPendingStackAdds(room: PokerRoom) {
+  ;(room as unknown as { applyPendingStackAdds(): void }).applyPendingStackAdds()
+}
+
+function forceFinishShowdown(room: PokerRoom) {
+  const r = room as unknown as {
+    inShowdown: boolean
+    finishHand(): void
+  }
+  if (r.inShowdown) r.finishHand()
+}
+
+async function bustLoserAllIn(room: PokerRoom, loserId: string) {
+  for (let i = 0; i < 80; i++) {
+    const st = room.snapshot().state
+    if (!st || st.handComplete) break
+    if (st.actionSeat === null) break
+    const actor = st.players.find((p) => p.seat === st.actionSeat)!
+    if (actor.id === loserId) {
+      assert.equal(room.applyAction(loserId, { type: 'all-in' }), null)
+      continue
+    }
+    const toCall = st.currentBet - actor.betThisRound
+    if (toCall > 0) {
+      assert.equal(room.applyAction(actor.id, { type: 'call' }), null)
+    } else {
+      room.applyAction(actor.id, { type: 'check' })
+    }
+  }
+}
+
 function finishHandByFold(room: PokerRoom) {
   const state = room.snapshot().state!
   const first = state.players.find((p) => p.seat === state.actionSeat)!
@@ -589,5 +630,134 @@ describe('PokerRoom action timeout', () => {
     } finally {
       stopRoomTimer(room)
     }
+  })
+})
+
+describe('PokerRoom add chips', () => {
+  it('addChips when no hand increases stack immediately', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    assert.deepEqual(await room.addChips('a', 100), {
+      appliesFromNextHand: false,
+    })
+    assert.equal(room.snapshot().seats[0]?.stack, 600)
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 0)
+  })
+
+  it('addChips during active hand does not change engine stack', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    const stackBefore = room.snapshot().state!.players.find((p) => p.id === 'a')!
+      .stack
+    assert.deepEqual(await room.addChips('a', 100), {
+      appliesFromNextHand: true,
+    })
+    const stackAfter = room.snapshot().state!.players.find((p) => p.id === 'a')!
+      .stack
+    assert.equal(stackAfter, stackBefore)
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 100)
+  })
+
+  it('pending add applies on next hand after finishHand', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    assert.deepEqual(await room.addChips('a', 100), {
+      appliesFromNextHand: true,
+    })
+    finishHandByFold(room)
+    const snap = room.snapshot()
+    assert.equal(snap.handInProgress, true)
+    const aInHand = snap.state!.players.find((p) => p.id === 'a')!
+    assert.ok(aInHand.stack >= 500 + 100 - 20)
+  })
+
+  it('two addChips during same hand accumulate pending', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    await room.addChips('a', 50)
+    await room.addChips('a', 75)
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 125)
+    const engineStack = room.snapshot().state!.players.find((p) => p.id === 'a')!
+      .stack
+    assert.ok(engineStack < 500)
+  })
+
+  it('applyPendingStackAdds is idempotent', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    await room.addChips('a', 100)
+    applyPendingStackAdds(room)
+    assert.equal(roomSeats(room)[0]?.stack, 600)
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 0)
+    applyPendingStackAdds(room)
+    assert.equal(roomSeats(room)[0]?.stack, 600)
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 0)
+  })
+
+  it('checkAddChips rejects invalid cases', async () => {
+    const room = new PokerRoom('test', noTimer)
+    assert.equal(room.checkAddChips('a', 100), 'Not seated')
+    await room.sit('a', 0, 500)
+    assert.equal(room.checkAddChips('a', 0), 'amount must be positive')
+    assert.equal(room.checkAddChips('a', -5), 'amount must be positive')
+    assert.equal(room.checkAddChips('a', 1.5), 'amount must be positive')
+  })
+
+  it('busted player with pending add stays seated after hand', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 100)
+    await room.sit('b', 1, 500)
+    assert.deepEqual(await room.addChips('a', 200), {
+      appliesFromNextHand: true,
+    })
+    await bustLoserAllIn(room, 'a')
+    forceFinishShowdown(room)
+    const seated = room.snapshot().seats[0]
+    assert.ok(seated)
+    assert.equal(seated!.playerId, 'a')
+    assert.ok(seated!.stack > 0)
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 0)
+  })
+
+  it('syncStacksFromTable preserves pendingStackAdd', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    await room.addChips('a', 80)
+    finishHandByFold(room)
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 0)
+    assert.ok(roomSeats(room)[0]!.stack > 0)
+  })
+
+  it('snapshot seats expose only playerId and stack', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    await room.addChips('a', 100)
+    const snap = room.snapshot()
+    for (const seat of snap.seats) {
+      if (!seat) continue
+      assert.equal(Object.keys(seat).sort().join(','), 'playerId,stack')
+    }
+  })
+
+  it('waiting player addChips during hand enters next hand with top-up', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    await room.sit('c', 2, 300)
+    assert.deepEqual(await room.addChips('c', 100), {
+      appliesFromNextHand: true,
+    })
+    assert.equal(roomSeats(room)[2]?.pendingStackAdd, 100)
+    finishHandByFold(room)
+    const snap = room.snapshot()
+    const c = snap.state!.players.find((p) => p.id === 'c')
+    assert.ok(c)
+    assert.ok(c!.stack >= 400 - 20)
   })
 })

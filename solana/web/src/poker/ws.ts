@@ -67,6 +67,10 @@ const WS_URL =
 
 const WS_TIMEOUT_MS = 12_000
 
+export type AddChipsWaitResult =
+  | { error: string }
+  | { appliesFromNextHand: boolean }
+
 type PendingRequest =
   | {
       kind: 'sit-check'
@@ -81,6 +85,24 @@ type PendingRequest =
       resolve: (err: string | null) => void
       timer: ReturnType<typeof setTimeout>
     }
+  | {
+      kind: 'add-chips-check'
+      amount: number
+      resolve: (err: string | null) => void
+      timer: ReturnType<typeof setTimeout>
+    }
+  | {
+      kind: 'add-chips'
+      amount: number
+      resolve: (result: AddChipsWaitResult) => void
+      timer: ReturnType<typeof setTimeout>
+    }
+
+/** Input to waitFor — explicit union so TS excess-property check works per kind. */
+type PendingRequestInit =
+  | { kind: 'sit-check'; seat: number; buyIn: number }
+  | { kind: 'sit'; seat: number }
+  | { kind: 'add-chips-check'; amount: number }
 
 export function usePokerWs(playerId: string | null) {
   const wsRef = useRef<WebSocket | null>(null)
@@ -89,13 +111,24 @@ export function usePokerWs(playerId: string | null) {
   const [table, setTable] = useState<PokerTableView | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const clearPending = useCallback((err: string | null) => {
-    const pending = pendingRef.current
-    if (!pending) return
-    clearTimeout(pending.timer)
-    pendingRef.current = null
-    pending.resolve(err)
-  }, [])
+  const clearPending = useCallback(
+    (err: string | null, appliesFromNextHand?: boolean) => {
+      const pending = pendingRef.current
+      if (!pending) return
+      clearTimeout(pending.timer)
+      pendingRef.current = null
+      if (pending.kind === 'add-chips') {
+        if (err === null && appliesFromNextHand !== undefined) {
+          pending.resolve({ appliesFromNextHand })
+        } else {
+          pending.resolve({ error: err ?? 'Error' })
+        }
+      } else {
+        pending.resolve(err)
+      }
+    },
+    [],
+  )
 
   const send = useCallback((msg: object) => {
     const ws = wsRef.current
@@ -138,6 +171,8 @@ export function usePokerWs(playerId: string | null) {
           showdownEndsAt?: number | null
           seat?: number
           buyIn?: number
+          amount?: number
+          appliesFromNextHand?: boolean
         }
 
         if (msg.type === 'sit-check-ok') {
@@ -148,6 +183,34 @@ export function usePokerWs(playerId: string | null) {
             pending.buyIn === msg.buyIn
           ) {
             clearPending(null)
+          }
+          return
+        }
+
+        if (msg.type === 'add-chips-check-ok') {
+          const pending = pendingRef.current
+          if (
+            pending?.kind === 'add-chips-check' &&
+            pending.amount === msg.amount
+          ) {
+            clearPending(null)
+          }
+          return
+        }
+
+        if (msg.type === 'add-chips-ok') {
+          const pending = pendingRef.current
+          if (
+            pending?.kind === 'add-chips' &&
+            pending.amount === msg.amount
+          ) {
+            if (typeof msg.appliesFromNextHand !== 'boolean') {
+              clearPending(
+                'Server nije poslao ispravan add-chips-ok odgovor',
+              )
+            } else {
+              clearPending(null, msg.appliesFromNextHand)
+            }
           }
           return
         }
@@ -203,7 +266,7 @@ export function usePokerWs(playerId: string | null) {
   }, [playerId, clearPending])
 
   const waitFor = useCallback(
-    (pending: Omit<PendingRequest, 'timer' | 'resolve'>) =>
+    (pending: PendingRequestInit) =>
       new Promise<string | null>((resolve) => {
         if (pendingRef.current) {
           resolve('Prethodni zahtev još traje')
@@ -243,6 +306,37 @@ export function usePokerWs(playerId: string | null) {
     [send, waitFor],
   )
 
+  const checkAddChips = useCallback(
+    async (amount: number): Promise<string | null> => {
+      send({ type: 'add-chips-check', amount })
+      return waitFor({ kind: 'add-chips-check', amount })
+    },
+    [send, waitFor],
+  )
+
+  const addChipsAndWait = useCallback(
+    async (amount: number, lockTx?: string): Promise<AddChipsWaitResult> =>
+      new Promise((resolve) => {
+        if (pendingRef.current) {
+          resolve({ error: 'Prethodni zahtev još traje' })
+          return
+        }
+        const timer = setTimeout(() => {
+          if (pendingRef.current?.kind === 'add-chips') {
+            clearPending('Server nije odgovorio na vreme')
+          }
+        }, WS_TIMEOUT_MS)
+        pendingRef.current = {
+          kind: 'add-chips',
+          amount,
+          resolve,
+          timer,
+        }
+        send({ type: 'add-chips', amount, lockTx })
+      }),
+    [send, clearPending],
+  )
+
   const stand = useCallback(
     (releaseTx?: string) => send({ type: 'stand', releaseTx }),
     [send],
@@ -259,6 +353,8 @@ export function usePokerWs(playerId: string | null) {
     error,
     checkSit,
     sitAndWait,
+    checkAddChips,
+    addChipsAndWait,
     stand,
     startHand,
     act,

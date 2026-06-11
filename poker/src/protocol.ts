@@ -14,6 +14,8 @@ export type ClientMessage =
 export interface SeatInfo {
   playerId: string
   stack: number
+  /** Unix ms when rebuy grace ends; only when stack <= 0 and in grace */
+  rebuyDeadlineAt?: number | null
 }
 
 /** Server → client */
@@ -44,6 +46,8 @@ export interface YouState {
   canAct: boolean
   /** Chips to call */
   toCall: number
+  /** Unix ms when rebuy grace ends; null if not in grace */
+  rebuyDeadlineAt: number | null
 }
 
 export const DEFAULT_TABLE_ID = 'main'

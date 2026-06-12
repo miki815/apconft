@@ -5,6 +5,7 @@ import { PublicKey } from '@solana/web3.js'
 import { lockForTable, releaseFromTable } from '../vault/tableVault'
 import { useVaultBalance } from '../vault/useVaultBalance'
 import { CardRow, PlayingCard } from './PlayingCard'
+import { RebuyGraceBar } from './RebuyGraceBar'
 import { ShowdownBar } from './ShowdownBar'
 import { isShowdownPhase, SHOWDOWN_MS } from './showdown'
 import { cardLabel, preflightSitMessage, shortPk, usePokerWs } from './ws'
@@ -70,7 +71,10 @@ export function PokerPlay() {
   }, [table])
 
   const seatedCount = table?.seats.filter(Boolean).length ?? 0
+  const eligibleCount =
+    table?.seats.filter((s) => s && s.stack > 0).length ?? 0
   const mySeat = table?.you.seat
+  const rebuyDeadlineAt = table?.you.rebuyDeadlineAt ?? null
   const showdownPhase = useMemo(() => isShowdownPhase(table), [table])
   const [localShowdownEndsAt, setLocalShowdownEndsAt] = useState<number | null>(
     null,
@@ -115,7 +119,7 @@ export function PokerPlay() {
     raiseBounds !== null && raiseBounds.max >= raiseBounds.min
 
   const canStart =
-    seatedCount >= 2 &&
+    eligibleCount >= 2 &&
     table &&
     !table.handInProgress &&
     !showdownPhase &&
@@ -143,6 +147,8 @@ export function PokerPlay() {
     if (inHand) return inHand.stack
     return table.seats[mySeat]?.stack ?? 0
   }, [table, mySeat])
+
+  const inRebuyGrace = rebuyDeadlineAt !== null && myStack <= 0
 
   useEffect(() => {
     const cap = mySeat !== null ? maxAddChips : maxBuyIn
@@ -656,6 +662,10 @@ export function PokerPlay() {
         </div>
       ) : null}
 
+      {inRebuyGrace && rebuyDeadlineAt ? (
+        <RebuyGraceBar key={rebuyDeadlineAt} deadlineAt={rebuyDeadlineAt} />
+      ) : null}
+
       <div className="poker-controls panel">
         <h2 className="panel-title">Sto</h2>
         <p className="panel-hint">
@@ -731,7 +741,7 @@ export function PokerPlay() {
               </button>
               <button
                 type="button"
-                className="primary"
+                className={inRebuyGrace ? 'accent' : 'primary'}
                 disabled={
                   !playerId ||
                   !connected ||
@@ -743,7 +753,7 @@ export function PokerPlay() {
                 }
                 onClick={() => void handleAddChips()}
               >
-                {busy ? 'Potpis…' : 'Dopuni chipove'}
+                {busy ? 'Potpis…' : inRebuyGrace ? 'Dopuni (rebuy)' : 'Dopuni chipove'}
               </button>
             </>
           ) : (

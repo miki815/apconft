@@ -18,11 +18,13 @@ export { DEFAULT_TABLE_ID, MAX_SEATS }
 
 export const SHOWDOWN_MS = 5000
 export const ACTION_TIMEOUT_MS = 30_000
+export const REBUY_GRACE_MS = 60_000
 
 interface Seat {
   playerId: string
   stack: number
   pendingStackAdd: number
+  rebuyDeadlineAt: number | null
 }
 
 export interface RoomSnapshot {
@@ -58,9 +60,12 @@ export class PokerRoom {
   private showdownEndsAt: number | null = null
   private showdownTimer: ReturnType<typeof setTimeout> | null = null
   private readonly actionTimeoutMs: number
+  private readonly rebuyGraceMs: number
   private actionTimer: ReturnType<typeof setTimeout> | null = null
   private actionTimerSeq = 0
   private actionTimerToken: ActionTimerToken | null = null
+  private readonly rebuyTimers = new Map<number, ReturnType<typeof setTimeout>>()
+  private readonly rebuyTimerSeq = new Map<number, number>()
   private readonly vaultConnection = new Connection(SOLANA_RPC_URL, 'confirmed')
   private readonly tableMint: PublicKey | null = POKER_TABLE_MINT
     ? new PublicKey(POKER_TABLE_MINT)
@@ -73,12 +78,32 @@ export class PokerRoom {
       smallBlind?: number
       bigBlind?: number
       actionTimeoutMs?: number
+      rebuyGraceMs?: number
     },
   ) {
     this.tableId = tableId
     this.smallBlind = opts?.smallBlind ?? 5
     this.bigBlind = opts?.bigBlind ?? 10
     this.actionTimeoutMs = opts?.actionTimeoutMs ?? ACTION_TIMEOUT_MS
+    this.rebuyGraceMs = opts?.rebuyGraceMs ?? REBUY_GRACE_MS
+  }
+
+  private seatInfo(
+    s: Seat,
+    seatIdx: number,
+    state: TableState | null,
+    handInProgress: boolean,
+  ): SeatInfo {
+    let stack = s.stack
+    if (state && (handInProgress || this.inShowdown)) {
+      const live = state.players.find((p) => p.seat === seatIdx)
+      if (live) stack = live.stack
+    }
+    const info: SeatInfo = { playerId: s.playerId, stack }
+    if (stack <= 0 && s.rebuyDeadlineAt !== null) {
+      info.rebuyDeadlineAt = s.rebuyDeadlineAt
+    }
+    return info
   }
 
   snapshot(): RoomSnapshot {
@@ -90,11 +115,7 @@ export class PokerRoom {
 
     const seats = this.seats.map((s, seatIdx) => {
       if (!s) return null
-      if (state && (handInProgress || this.inShowdown)) {
-        const live = state.players.find((p) => p.seat === seatIdx)
-        if (live) return { playerId: s.playerId, stack: live.stack }
-      }
-      return { playerId: s.playerId, stack: s.stack }
+      return this.seatInfo(s, seatIdx, state, handInProgress)
     })
 
     return {
@@ -150,7 +171,12 @@ export class PokerRoom {
     }
 
     const seatedBefore = this.seats.filter(Boolean).length
-    this.seats[seat] = { playerId, stack: buyIn, pendingStackAdd: 0 }
+    this.seats[seat] = {
+      playerId,
+      stack: buyIn,
+      pendingStackAdd: 0,
+      rebuyDeadlineAt: null,
+    }
     this.tryAutoStartHand(seatedBefore)
     return null
   }
@@ -219,17 +245,33 @@ export class PokerRoom {
     }
 
     const s = this.seats[seatNow]!
+
+    if (s.rebuyDeadlineAt !== null && !this.isPlayerInCurrentHand(playerId)) {
+      s.stack += amount
+      this.clearRebuyGrace(seatNow)
+      this.maybeAutoStartAfterRebuy()
+      return { appliesFromNextHand: false }
+    }
+
     const appliesFromNextHand = this.isHandActive()
     if (appliesFromNextHand) {
       s.pendingStackAdd += amount
     } else {
       s.stack += amount
     }
+
+    if (s.stack > 0 || s.pendingStackAdd > 0) {
+      this.clearRebuyGrace(seatNow)
+    }
+    this.maybeAutoStartAfterRebuy()
+
     return { appliesFromNextHand }
   }
 
   async stand(playerId: string, releaseTx?: string): Promise<string | null> {
-    if (this.isHandActive()) return 'Cannot leave during a hand'
+    if (this.isHandActive() && this.isPlayerInCurrentHand(playerId)) {
+      return 'Cannot leave during a hand'
+    }
     const seat = this.findSeat(playerId)
     if (seat === null) return 'Not seated'
 
@@ -261,17 +303,23 @@ export class PokerRoom {
       if (verifyErr) return verifyErr
     }
 
+    this.clearRebuyGrace(seat)
     this.seats[seat] = null
+    if (!this.isHandActive()) {
+      this.tryAutoStartNextHandAfterFinish()
+    }
     return null
   }
 
   startHand(): string | null {
     if (this.isHandActive()) return 'Hand already in progress'
     this.applyPendingStackAdds()
-    this.removeBustedSeats()
+    this.removeExpiredRebuySeats()
 
     const seated = this.seats
-      .map((s, seat) => (s ? { id: s.playerId, seat, stack: s.stack } : null))
+      .map((s, seat) =>
+        s && s.stack > 0 ? { id: s.playerId, seat, stack: s.stack } : null,
+      )
       .filter((x): x is { id: string; seat: number; stack: number } => x !== null)
 
     if (seated.length < 2) return 'Need at least 2 seated players'
@@ -322,6 +370,14 @@ export class PokerRoom {
     let holeCards: YouState['holeCards'] = null
     let canAct = false
     let toCall = 0
+    let rebuyDeadlineAt: number | null = null
+
+    if (seat !== null && this.seats[seat]) {
+      const s = this.seats[seat]!
+      if (s.stack <= 0 && s.rebuyDeadlineAt !== null) {
+        rebuyDeadlineAt = s.rebuyDeadlineAt
+      }
+    }
 
     if (this.table && seat !== null) {
       const priv = this.table.getStateForPlayer(playerId)
@@ -333,7 +389,26 @@ export class PokerRoom {
       }
     }
 
-    return { seat, holeCards, canAct, toCall }
+    return { seat, holeCards, canAct, toCall, rebuyDeadlineAt }
+  }
+
+  private countEligibleForHand(): number {
+    let n = 0
+    for (const s of this.seats) {
+      if (s && s.stack > 0) n++
+    }
+    return n
+  }
+
+  private isPlayerInCurrentHand(playerId: string): boolean {
+    if (!this.table) return false
+    return this.table.getState().players.some((p) => p.id === playerId)
+  }
+
+  private maybeAutoStartAfterRebuy(): void {
+    if (!this.isHandActive() && this.countEligibleForHand() >= 2) {
+      this.tryAutoStartNextHandAfterFinish()
+    }
   }
 
   private tryAutoStartHand(seatedBefore: number): void {
@@ -456,14 +531,15 @@ export class PokerRoom {
     this.showdownEndsAt = null
     this.syncStacksFromTable()
     this.applyPendingStackAdds()
-    this.removeBustedSeats()
+    this.enterRebuyGraceForZeroStacks()
+    this.removeExpiredRebuySeats()
     this.table = null
     this.tryAutoStartNextHandAfterFinish()
   }
 
   private tryAutoStartNextHandAfterFinish(): void {
     if (this.isHandActive()) return
-    if (this.seats.filter(Boolean).length < 2) return
+    if (this.countEligibleForHand() < 2) return
     this.startHand()
   }
 
@@ -484,11 +560,14 @@ export class PokerRoom {
     for (const p of state.players) {
       const seat = this.findSeat(p.id)
       if (seat !== null && this.seats[seat]) {
-        const pending = this.seats[seat]!.pendingStackAdd
+        const prev = this.seats[seat]!
+        const pending = prev.pendingStackAdd
+        const rebuyDeadlineAt = p.stack > 0 ? null : prev.rebuyDeadlineAt
         this.seats[seat] = {
           playerId: p.id,
           stack: p.stack,
           pendingStackAdd: pending,
+          rebuyDeadlineAt,
         }
       }
     }
@@ -501,16 +580,86 @@ export class PokerRoom {
       if (!s || s.pendingStackAdd <= 0) continue
       s.stack += s.pendingStackAdd
       s.pendingStackAdd = 0
+      if (s.stack > 0) {
+        this.clearRebuyGrace(seat)
+      }
     }
   }
 
-  /** Busted players (stack 0) leave the table; no vault release needed. */
-  private removeBustedSeats() {
+  private enterRebuyGraceForZeroStacks() {
+    if (this.rebuyGraceMs <= 0) return
+    const now = Date.now()
     for (let seat = 0; seat < MAX_SEATS; seat++) {
       const s = this.seats[seat]
-      if (s && s.stack <= 0) {
-        this.seats[seat] = null
-      }
+      if (!s || s.stack > 0) continue
+      if (s.rebuyDeadlineAt !== null) continue
+      s.rebuyDeadlineAt = now + this.rebuyGraceMs
+      this.scheduleRebuyGraceTimer(seat)
+      this.onTableUpdate?.()
+    }
+  }
+
+  private removeExpiredRebuySeats() {
+    const now = Date.now()
+    for (let seat = 0; seat < MAX_SEATS; seat++) {
+      const s = this.seats[seat]
+      if (!s || s.stack > 0) continue
+      if (s.pendingStackAdd > 0) continue
+      if (s.rebuyDeadlineAt === null) continue
+      if (now < s.rebuyDeadlineAt) continue
+      this.clearRebuyGrace(seat)
+      this.seats[seat] = null
+    }
+  }
+
+  private clearRebuyGrace(seat: number) {
+    const timer = this.rebuyTimers.get(seat)
+    if (timer) {
+      clearTimeout(timer)
+      this.rebuyTimers.delete(seat)
+    }
+    const s = this.seats[seat]
+    if (s) {
+      s.rebuyDeadlineAt = null
+    }
+    this.rebuyTimerSeq.set(seat, (this.rebuyTimerSeq.get(seat) ?? 0) + 1)
+  }
+
+  private scheduleRebuyGraceTimer(seat: number) {
+    if (this.rebuyGraceMs <= 0) return
+    const s = this.seats[seat]
+    if (!s || s.rebuyDeadlineAt === null) return
+
+    const existing = this.rebuyTimers.get(seat)
+    if (existing) clearTimeout(existing)
+
+    const seq = (this.rebuyTimerSeq.get(seat) ?? 0) + 1
+    this.rebuyTimerSeq.set(seat, seq)
+    const playerId = s.playerId
+    const delay = Math.max(0, s.rebuyDeadlineAt - Date.now())
+
+    const timer = setTimeout(() => {
+      this.rebuyTimers.delete(seat)
+      this.onRebuyGraceExpired(seat, playerId, seq)
+    }, delay)
+    timer.unref()
+    this.rebuyTimers.set(seat, timer)
+  }
+
+  private onRebuyGraceExpired(seat: number, playerId: string, seq: number) {
+    if ((this.rebuyTimerSeq.get(seat) ?? 0) !== seq) return
+
+    const s = this.seats[seat]
+    if (!s || s.playerId !== playerId) return
+    if (s.rebuyDeadlineAt === null) return
+    if (s.stack > 0 || s.pendingStackAdd > 0) return
+    if (Date.now() < s.rebuyDeadlineAt) return
+
+    this.clearRebuyGrace(seat)
+    this.seats[seat] = null
+    this.onTableUpdate?.()
+    if (!this.isHandActive()) {
+      this.tryAutoStartNextHandAfterFinish()
     }
   }
 }

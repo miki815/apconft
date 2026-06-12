@@ -41,6 +41,7 @@ export interface TableState {
 export interface SeatInfo {
   playerId: string
   stack: number
+  rebuyDeadlineAt?: number | null
 }
 
 export interface YouState {
@@ -48,6 +49,7 @@ export interface YouState {
   holeCards: Card[] | null
   canAct: boolean
   toCall: number
+  rebuyDeadlineAt: number | null
 }
 
 export interface PokerTableView {
@@ -234,7 +236,10 @@ export function usePokerWs(playerId: string | null) {
             handInProgress: msg.handInProgress ?? false,
             showdownActive: msg.showdownActive ?? false,
             showdownEndsAt: msg.showdownEndsAt ?? null,
-            you: msg.you,
+            you: {
+              ...msg.you,
+              rebuyDeadlineAt: msg.you.rebuyDeadlineAt ?? null,
+            },
           }
           setTable(next)
 

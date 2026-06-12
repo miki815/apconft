@@ -6,7 +6,9 @@ process.env.POKER_SKIP_VAULT_CHECK = '1'
 
 const noTimer = { actionTimeoutMs: 0 }
 const fastTimer = { actionTimeoutMs: 20 }
+const fastRebuy = { actionTimeoutMs: 0, rebuyGraceMs: 50 }
 const timerWait = fastTimer.actionTimeoutMs! + 50
+const rebuyWait = fastRebuy.rebuyGraceMs! + 50
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -14,6 +16,11 @@ const flushTimers = () => new Promise<void>((r) => setImmediate(r))
 
 async function waitForActionTimer() {
   await sleep(timerWait)
+  await flushTimers()
+}
+
+async function waitForRebuyTimer() {
+  await sleep(rebuyWait)
   await flushTimers()
 }
 
@@ -40,6 +47,7 @@ type SeatInternal = {
   playerId: string
   stack: number
   pendingStackAdd: number
+  rebuyDeadlineAt: number | null
 }
 
 function roomSeats(room: PokerRoom): (SeatInternal | null)[] {
@@ -56,6 +64,67 @@ function forceFinishShowdown(room: PokerRoom) {
     finishHand(): void
   }
   if (r.inShowdown) r.finishHand()
+}
+
+async function allInAndFinish(room: PokerRoom) {
+  const snap = room.snapshot()
+  const state = snap.state!
+  const first = state.players.find((p) => p.seat === state.actionSeat)!
+  const second = state.players.find((p) => p.id !== first.id)!
+  assert.equal(room.applyAction(first.id, { type: 'all-in' }), null)
+  assert.equal(room.applyAction(second.id, { type: 'call' }), null)
+
+  for (let i = 0; i < 8; i++) {
+    const s = room.snapshot()
+    if (s.showdownActive) {
+      forceFinishShowdown(room)
+      return room.snapshot()
+    }
+    if (!s.handInProgress) return s
+    if (s.state?.handComplete) {
+      const r = room as unknown as {
+        inShowdown: boolean
+        finishHand(): void
+      }
+      if (r.inShowdown) forceFinishShowdown(room)
+      else r.finishHand()
+      return room.snapshot()
+    }
+    await flushTimers()
+  }
+  assert.fail('hand did not finish')
+}
+
+function ensureGraceBust(room: PokerRoom, playerId: string) {
+  const r = room as unknown as {
+    table: unknown
+    inShowdown: boolean
+    finishHand(): void
+    seats: SeatInternal[]
+    clearRebuyGrace(seat: number): void
+    enterRebuyGraceForZeroStacks(): void
+    tryAutoStartNextHandAfterFinish(): void
+  }
+  const seat = r.seats.findIndex((s) => s?.playerId === playerId)
+  assert.notEqual(seat, -1)
+  r.seats[seat]!.stack = 0
+  r.seats[seat]!.pendingStackAdd = 0
+
+  if (r.inShowdown) r.finishHand()
+  else if (r.table) r.finishHand()
+
+  r.clearRebuyGrace(seat)
+  r.enterRebuyGraceForZeroStacks()
+  r.tryAutoStartNextHandAfterFinish()
+}
+
+function bustedInGraceId(room: PokerRoom): string {
+  const snap = room.snapshot()
+  const seat = snap.seats.find(
+    (s) => s && s.stack <= 0 && s.rebuyDeadlineAt,
+  )
+  assert.ok(seat, 'expected busted player in rebuy grace')
+  return seat!.playerId
 }
 
 async function bustLoserAllIn(room: PokerRoom, loserId: string) {
@@ -173,30 +242,34 @@ describe('PokerRoom', () => {
     assert.equal(room.checkSit('a', 1, 200), 'Already seated')
   })
 
-  it('removes busted player after hand ends', async () => {
-    const room = new PokerRoom('test', noTimer)
+  it('busted player enters rebuy grace after hand ends', async () => {
+    const room = new PokerRoom('test', fastRebuy)
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
 
-    const snap = room.snapshot()
-    const state = snap.state!
-    const first = state.players.find((p) => p.seat === state.actionSeat)!
-    const second = state.players.find((p) => p.id !== first.id)!
-    room.applyAction(first.id, { type: 'all-in' })
-    room.applyAction(second.id, { type: 'call' })
-
-    if (room.snapshot().showdownActive) {
-      await sleep(SHOWDOWN_MS + 100)
-    }
-
-    const end = room.snapshot()
+    const end = await allInAndFinish(room)
     const bustedSeat = end.seats.findIndex((s) => s?.stack === 0)
-    if (bustedSeat !== -1) {
-      assert.equal(end.seats[bustedSeat], null)
-    } else {
-      const zero = end.seats.find((s) => s !== null && s.stack <= 0)
-      assert.equal(zero ?? null, null)
-    }
+    assert.notEqual(bustedSeat, -1)
+    assert.ok(end.seats[bustedSeat])
+    assert.ok(end.seats[bustedSeat]!.rebuyDeadlineAt)
+    assert.ok(end.seats[bustedSeat]!.rebuyDeadlineAt! > Date.now())
+    assert.equal(roomSeats(room)[bustedSeat]?.rebuyDeadlineAt, end.seats[bustedSeat]!.rebuyDeadlineAt)
+  })
+
+  it('busted player is removed after rebuy timer expires', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+
+    const end = await allInAndFinish(room)
+    const bustedSeat = end.seats.findIndex(
+      (s) => s && s.stack <= 0 && s.rebuyDeadlineAt,
+    )
+    assert.notEqual(bustedSeat, -1)
+
+    await waitForRebuyTimer()
+
+    assert.equal(room.snapshot().seats[bustedSeat], null)
   })
 
   it('first sit does not auto-start', async () => {
@@ -258,22 +331,13 @@ describe('PokerRoom', () => {
   })
 
   it('does not auto-start next hand when one seated remains', async () => {
-    const room = new PokerRoom('test', noTimer)
+    const room = new PokerRoom('test', fastRebuy)
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
 
-    const state = room.snapshot().state!
-    const first = state.players.find((p) => p.seat === state.actionSeat)!
-    const second = state.players.find((p) => p.id !== first.id)!
-    room.applyAction(first.id, { type: 'all-in' })
-    room.applyAction(second.id, { type: 'call' })
-
-    if (room.snapshot().showdownActive) {
-      await sleep(SHOWDOWN_MS + 100)
-    }
-
-    const end = room.snapshot()
-    assert.equal(end.seats.filter(Boolean).length, 1)
+    const end = await allInAndFinish(room)
+    assert.equal(end.seats.filter(Boolean).length, 2)
+    assert.equal(end.seats.filter((s) => s && s.stack > 0).length, 1)
     assert.equal(end.handInProgress, false)
     assert.equal(end.state, null)
   })
@@ -327,6 +391,7 @@ describe('PokerRoom waiting sit', () => {
     assert.equal(you.holeCards, null)
     assert.equal(you.canAct, false)
     assert.equal(you.toCall, 0)
+    assert.equal(you.rebuyDeadlineAt, null)
   })
 
   it('waiting player enters next hand after auto-next', async () => {
@@ -733,7 +798,7 @@ describe('PokerRoom add chips', () => {
     assert.ok(roomSeats(room)[0]!.stack > 0)
   })
 
-  it('snapshot seats expose only playerId and stack', async () => {
+  it('snapshot seats expose only public fields', async () => {
     const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
@@ -741,7 +806,10 @@ describe('PokerRoom add chips', () => {
     const snap = room.snapshot()
     for (const seat of snap.seats) {
       if (!seat) continue
-      assert.equal(Object.keys(seat).sort().join(','), 'playerId,stack')
+      const keys = Object.keys(seat).sort().join(',')
+      assert.ok(
+        keys === 'playerId,stack' || keys === 'playerId,rebuyDeadlineAt,stack',
+      )
     }
   })
 
@@ -759,5 +827,165 @@ describe('PokerRoom add chips', () => {
     const c = snap.state!.players.find((p) => p.id === 'c')
     assert.ok(c)
     assert.ok(c!.stack >= 400 - 20)
+  })
+})
+
+describe('PokerRoom rebuy grace', () => {
+  async function bustOnePlayer(room: PokerRoom) {
+    return allInAndFinish(room)
+  }
+
+  it('grace deadline is approximately now + rebuyGraceMs', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    const before = Date.now()
+    await bustOnePlayer(room)
+    const busted = room.snapshot().seats.find(
+      (s) => s && s.stack <= 0 && s.rebuyDeadlineAt,
+    )
+    assert.ok(busted?.rebuyDeadlineAt)
+    const delta = busted!.rebuyDeadlineAt! - before
+    assert.ok(delta >= fastRebuy.rebuyGraceMs! - 20)
+    assert.ok(delta <= fastRebuy.rebuyGraceMs! + 200)
+  })
+
+  it('rebuy before expiry keeps player seated with cleared grace', async () => {
+    const room = new PokerRoom('test', { actionTimeoutMs: 0, rebuyGraceMs: 1000 })
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    await bustOnePlayer(room)
+    const bustedId = bustedInGraceId(room)
+    assert.deepEqual(await room.addChips(bustedId, 200), {
+      appliesFromNextHand: false,
+    })
+    const after = room.snapshot()
+    const seat = after.seats.find((s) => s?.playerId === bustedId)
+    assert.ok(seat)
+    assert.ok(seat!.stack > 0)
+    assert.equal(seat!.rebuyDeadlineAt ?? null, null)
+    assert.equal(roomSeats(room).find((s) => s?.playerId === bustedId)?.rebuyDeadlineAt, null)
+  })
+
+  it('player with zero stack in grace is excluded from startHand players', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('b', 1, 500)
+    await room.sit('c', 2, 500)
+    await room.sit('a', 0, 500)
+    ensureGraceBust(room, 'a')
+    const snap = room.snapshot()
+    assert.equal(snap.seats[0]?.stack, 0)
+    assert.ok(snap.seats[0]?.rebuyDeadlineAt)
+    assert.equal(snap.handInProgress, true)
+    assert.equal(snap.state!.players.length, 2)
+    assert.equal(snap.state!.players.find((p) => p.id === 'a'), undefined)
+  })
+
+  it('does not auto-start when only one eligible player', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    await bustOnePlayer(room)
+    const end = room.snapshot()
+    assert.equal(end.seats.filter(Boolean).length, 2)
+    assert.equal(end.seats.filter((s) => s && s.stack > 0).length, 1)
+    assert.equal(end.handInProgress, false)
+  })
+
+  it('three players bust one continues hand without busted player', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('b', 1, 500)
+    await room.sit('c', 2, 500)
+    await room.sit('a', 0, 500)
+    ensureGraceBust(room, 'a')
+    const end = room.snapshot()
+    assert.equal(end.seats[0]?.playerId, 'a')
+    assert.equal(end.seats[0]?.stack, 0)
+    assert.ok(end.seats[0]?.rebuyDeadlineAt)
+    assert.equal(end.handInProgress, true)
+    assert.equal(end.state!.players.length, 2)
+    assert.equal(end.state!.players.find((p) => p.id === 'a'), undefined)
+  })
+
+  it('rebuy addChips during others hand applies immediately', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('b', 1, 500)
+    await room.sit('c', 2, 500)
+    await room.sit('a', 0, 500)
+    ensureGraceBust(room, 'a')
+    assert.equal(room.snapshot().handInProgress, true)
+
+    assert.deepEqual(await room.addChips('a', 150), {
+      appliesFromNextHand: false,
+    })
+    assert.equal(roomSeats(room)[0]?.stack, 150)
+    assert.equal(roomSeats(room)[0]?.rebuyDeadlineAt, null)
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 0)
+
+    await waitForRebuyTimer()
+    assert.equal(room.snapshot().seats[0]?.playerId, 'a')
+  })
+
+  it('stand during grace clears seat without hand block', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('b', 1, 500)
+    await room.sit('c', 2, 500)
+    await room.sit('a', 0, 500)
+    ensureGraceBust(room, 'a')
+    assert.equal(room.snapshot().handInProgress, true)
+
+    assert.equal(await room.stand('a'), null)
+    assert.equal(room.snapshot().seats[0], null)
+    assert.equal(roomSeats(room)[0], null)
+  })
+
+  it('youState exposes rebuyDeadlineAt for busted player', async () => {
+    const room = new PokerRoom('test', { actionTimeoutMs: 0, rebuyGraceMs: 1000 })
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    await bustOnePlayer(room)
+    const bustedId = bustedInGraceId(room)
+    const you = room.youState(bustedId)
+    assert.ok(you.rebuyDeadlineAt)
+    assert.ok(you.rebuyDeadlineAt! > Date.now())
+  })
+
+  it('timer does not kick player with stack after rebuy', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    await bustOnePlayer(room)
+    const bustedId = bustedInGraceId(room)
+    await room.addChips(bustedId, 100)
+    await waitForRebuyTimer()
+    const seat = room.snapshot().seats.find((s) => s?.playerId === bustedId)
+    assert.ok(seat)
+    assert.ok(seat!.stack > 0)
+  })
+
+  it('rebuy success with two eligible may auto-start next hand', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    await bustOnePlayer(room)
+    const bustedId = bustedInGraceId(room)
+    assert.equal(room.snapshot().handInProgress, false)
+    await room.addChips(bustedId, 200)
+    const after = room.snapshot()
+    assert.equal(after.handInProgress, true)
+    assert.equal(after.state!.players.length, 2)
+  })
+
+  it('pendingStackAdd before grace prevents grace entry', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('a', 0, 100)
+    await room.sit('b', 1, 500)
+    await room.addChips('a', 200)
+    await bustLoserAllIn(room, 'a')
+    forceFinishShowdown(room)
+    const seated = room.snapshot().seats[0]
+    assert.ok(seated)
+    assert.ok(seated!.stack > 0)
+    assert.equal(seated!.rebuyDeadlineAt ?? null, null)
   })
 })

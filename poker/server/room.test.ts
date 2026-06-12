@@ -182,7 +182,7 @@ describe('PokerRoom', () => {
     assert.equal(room.startHand(), 'Hand already in progress')
   })
 
-  it('third sit after hand ends blocked while auto-next hand runs', async () => {
+  it('third sit allowed while auto-next hand runs', async () => {
     const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
@@ -192,8 +192,14 @@ describe('PokerRoom', () => {
     const afterFold = room.snapshot()
     assert.equal(afterFold.handInProgress, true)
     assert.equal(afterFold.state!.handComplete, false)
+    assert.equal(afterFold.state!.players.length, 2)
 
-    assert.equal(await room.sit('c', 2, 300), 'Cannot sit during a hand')
+    assert.equal(await room.sit('c', 2, 300), null)
+    const waiting = room.snapshot()
+    assert.equal(waiting.seats[2]?.playerId, 'c')
+    assert.equal(waiting.seats[2]?.stack, 300)
+    assert.equal(waiting.state!.players.find((p) => p.id === 'c'), undefined)
+    assert.equal(waiting.state!.players.length, 2)
   })
 
   it('auto-starts next hand after fold with two seated', async () => {
@@ -251,6 +257,107 @@ describe('PokerRoom', () => {
     assert.notEqual(await room.sit('a', 1, 200), null)
     assert.equal(room.snapshot().handInProgress, false)
     assert.equal(room.snapshot().seats.filter(Boolean).length, 1)
+  })
+})
+
+describe('PokerRoom waiting sit', () => {
+  it('allows sit during active hand without joining current HoldemTable', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    assert.equal(room.snapshot().handInProgress, true)
+
+    assert.equal(await room.sit('c', 2, 300), null)
+    const snap = room.snapshot()
+    assert.equal(snap.seats[2]?.playerId, 'c')
+    assert.equal(snap.seats[2]?.stack, 300)
+    assert.equal(snap.state!.players.length, 2)
+    assert.equal(snap.state!.players.find((p) => p.id === 'c'), undefined)
+  })
+
+  it('youState for waiting player has seat but no cards or action', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    assert.equal(await room.sit('c', 2, 300), null)
+
+    const you = room.youState('c')
+    assert.equal(you.seat, 2)
+    assert.equal(you.holeCards, null)
+    assert.equal(you.canAct, false)
+    assert.equal(you.toCall, 0)
+  })
+
+  it('waiting player enters next hand after auto-next', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    assert.equal(await room.sit('c', 2, 300), null)
+
+    finishHandByFold(room)
+    const snap = room.snapshot()
+    assert.equal(snap.handInProgress, true)
+    assert.equal(snap.state!.players.length, 3)
+    assert.ok(snap.state!.players.find((p) => p.id === 'c'))
+  })
+
+  it('third sit mid-hand does not change current hand player count', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    assert.equal(room.snapshot().state!.players.length, 2)
+
+    assert.equal(await room.sit('c', 2, 300), null)
+    assert.equal(room.snapshot().state!.players.length, 2)
+    assert.equal(room.snapshot().handInProgress, true)
+  })
+
+  it('checkSit rejects taken seat and already seated during active hand', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    assert.equal(room.snapshot().handInProgress, true)
+
+    assert.equal(room.checkSit('d', 0, 200), 'Seat taken')
+    assert.equal(room.checkSit('a', 2, 200), 'Already seated')
+  })
+
+  it('allows sit during showdown display without joining current hand', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 200)
+    await room.sit('b', 1, 200)
+
+    for (let i = 0; i < 60; i++) {
+      const snap = room.snapshot()
+      const st = snap.state
+      if (!st) break
+      if (st.handComplete && snap.showdownActive) {
+        assert.equal(await room.sit('c', 2, 300), null)
+        const waiting = room.snapshot()
+        assert.equal(waiting.seats[2]?.playerId, 'c')
+        assert.equal(waiting.state!.players.find((p) => p.id === 'c'), undefined)
+        assert.equal(waiting.showdownActive, true)
+        return
+      }
+      if (st.actionSeat === null) break
+      const p = st.players.find((x) => x.seat === st.actionSeat)
+      if (!p) break
+      const toCall = st.currentBet - p.betThisRound
+      room.applyAction(
+        p.id,
+        toCall > 0 ? { type: 'call' } : { type: 'check' },
+      )
+    }
+    assert.fail('expected showdown')
+  })
+
+  it('rejects applyAction from waiting player', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    assert.equal(await room.sit('c', 2, 300), null)
+
+    assert.notEqual(room.applyAction('c', { type: 'fold' }), null)
   })
 })
 

@@ -155,7 +155,6 @@ export class PokerRoom {
       return 'Invalid seat'
     }
     if (!Number.isInteger(buyIn) || buyIn <= 0) return 'buyIn must be positive'
-    if (this.isHandActive()) return 'Cannot sit during a hand'
     if (this.seats[seat]) return 'Seat taken'
     if (this.findSeat(playerId) !== null) return 'Already seated'
     return null

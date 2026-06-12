@@ -50,6 +50,42 @@ function driveThreeWayLockedRunout(table: HoldemTable) {
   }
 }
 
+function nWayLockedRunoutTable(n: number) {
+  return new HoldemTable({
+    players: [
+      { id: 'deep', seat: 0, stack: 200 },
+      ...Array.from({ length: n - 1 }, (_, i) => ({
+        id: `s${i}`,
+        seat: i + 1,
+        stack: 50,
+      })),
+    ],
+    smallBlind: 5,
+    bigBlind: 10,
+    buttonSeat: 0,
+    shuffle: () => createDeck(),
+  })
+}
+
+function driveLockedRunout(table: HoldemTable) {
+  table.startHand()
+  for (let i = 0; i < 80; i++) {
+    const s = table.getState()
+    if (s.board.length > 0 || s.handComplete) return
+    if (s.actionSeat === null) return
+    const actor = s.players.find((p) => p.seat === s.actionSeat)!
+    if (actor.id === 'deep') {
+      if (s.currentBet < 100) {
+        act(table, 'deep', { type: 'raise', total: 100 })
+      } else {
+        act(table, 'deep', { type: 'call' })
+      }
+    } else {
+      act(table, actor.id, { type: 'all-in' })
+    }
+  }
+}
+
 describe('HoldemTable', () => {
   it('posts blinds and deals hole cards', () => {
     const table = new HoldemTable({
@@ -190,6 +226,39 @@ describe('HoldemTable locked runout', () => {
     assert.equal(river.ok, true)
     assert.equal(river.state!.board.length, 5)
     assert.equal(river.state!.handComplete, true)
+  })
+
+  it('4–6-way locked runout: lone active, rest all-in', () => {
+    for (const n of [4, 5, 6]) {
+      const table = nWayLockedRunoutTable(n)
+      driveLockedRunout(table)
+
+      const s = table.getState()
+      assert.equal(s.actionSeat, null, `n=${n}`)
+      assert.equal(s.board.length, 3, `n=${n}`)
+      assert.equal(s.handComplete, false, `n=${n}`)
+      assert.equal(
+        s.players.filter((p) => p.status === 'active' && p.stack > 0).length,
+        1,
+        `n=${n}`,
+      )
+      assert.equal(
+        s.players.filter((p) => p.status === 'all-in').length,
+        n - 1,
+        `n=${n}`,
+      )
+      assert.equal(table.isRunoutPending(), true, `n=${n}`)
+
+      const turn = table.advanceRunout()
+      assert.equal(turn.ok, true, `n=${n}`)
+      assert.equal(turn.state!.board.length, 4, `n=${n}`)
+      assert.equal(turn.state!.handComplete, false, `n=${n}`)
+
+      const river = table.advanceRunout()
+      assert.equal(river.ok, true, `n=${n}`)
+      assert.equal(river.state!.board.length, 5, `n=${n}`)
+      assert.equal(river.state!.handComplete, true, `n=${n}`)
+    }
   })
 
   it('heads-up one active + one all-in enters locked runout', () => {

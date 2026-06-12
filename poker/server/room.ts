@@ -12,6 +12,7 @@ import { verifyTableVaultTx } from './vaultTx.js'
 export { DEFAULT_TABLE_ID, MAX_SEATS }
 
 export const SHOWDOWN_MS = 5000
+export const ACTION_TIMEOUT_MS = 30_000
 
 interface Seat {
   playerId: string
@@ -29,6 +30,12 @@ export interface RoomSnapshot {
   showdownEndsAt: number | null
 }
 
+interface ActionTimerToken {
+  seq: number
+  seat: number
+  playerId: string
+}
+
 export class PokerRoom {
   readonly tableId: string
   readonly smallBlind: number
@@ -44,6 +51,10 @@ export class PokerRoom {
   private inShowdown = false
   private showdownEndsAt: number | null = null
   private showdownTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly actionTimeoutMs: number
+  private actionTimer: ReturnType<typeof setTimeout> | null = null
+  private actionTimerSeq = 0
+  private actionTimerToken: ActionTimerToken | null = null
   private readonly vaultConnection = new Connection(SOLANA_RPC_URL, 'confirmed')
   private readonly tableMint: PublicKey | null = POKER_TABLE_MINT
     ? new PublicKey(POKER_TABLE_MINT)
@@ -52,11 +63,16 @@ export class PokerRoom {
 
   constructor(
     tableId: string,
-    opts?: { smallBlind?: number; bigBlind?: number },
+    opts?: {
+      smallBlind?: number
+      bigBlind?: number
+      actionTimeoutMs?: number
+    },
   ) {
     this.tableId = tableId
     this.smallBlind = opts?.smallBlind ?? 5
     this.bigBlind = opts?.bigBlind ?? 10
+    this.actionTimeoutMs = opts?.actionTimeoutMs ?? ACTION_TIMEOUT_MS
   }
 
   snapshot(): RoomSnapshot {
@@ -202,17 +218,23 @@ export class PokerRoom {
     const r = this.table.startHand()
     if (!r.ok) {
       this.table = null
+      this.clearActionTimer()
       return r.error ?? 'Failed to start hand'
     }
 
     this.lastButtonSeat = r.state.buttonSeat
+    this.scheduleActionTimer()
     return null
   }
 
   applyAction(playerId: string, action: PlayerAction): string | null {
+    this.clearActionTimer()
     if (!this.table) return 'No hand in progress'
     const r = this.table.applyAction(playerId, action)
-    if (!r.ok) return r.error ?? 'Invalid action'
+    if (!r.ok) {
+      this.maybeRescheduleActionTimer()
+      return r.error ?? 'Invalid action'
+    }
 
     if (r.state.handComplete) {
       if (this.table.isShowdownReveal()) {
@@ -220,6 +242,8 @@ export class PokerRoom {
       } else {
         this.finishHand()
       }
+    } else {
+      this.scheduleActionTimer()
     }
     return null
   }
@@ -272,8 +296,77 @@ export class PokerRoom {
     return this.seats[seat]?.stack ?? 0
   }
 
+  private clearActionTimer() {
+    if (this.actionTimer) {
+      clearTimeout(this.actionTimer)
+      this.actionTimer = null
+    }
+    this.actionTimerToken = null
+    this.actionTimerSeq++
+  }
+
+  private scheduleActionTimer() {
+    if (this.actionTimeoutMs <= 0) return
+    if (this.actionTimer) {
+      clearTimeout(this.actionTimer)
+      this.actionTimer = null
+    }
+    if (!this.table || this.inShowdown) return
+
+    const state = this.table.getState()
+    if (state.handComplete || state.actionSeat === null) return
+
+    const seat = state.actionSeat
+    const player = state.players.find((p) => p.seat === seat)
+    if (!player || player.status !== 'active' || player.stack <= 0) return
+
+    const seq = ++this.actionTimerSeq
+    const token: ActionTimerToken = { seq, seat, playerId: player.id }
+    this.actionTimerToken = token
+    this.actionTimer = setTimeout(
+      () => this.onActionTimeout(token),
+      this.actionTimeoutMs,
+    )
+    this.actionTimer.unref()
+  }
+
+  private maybeRescheduleActionTimer() {
+    if (this.actionTimeoutMs <= 0) return
+    if (!this.table || this.inShowdown) return
+    const state = this.table.getState()
+    if (state.handComplete || state.actionSeat === null) return
+    this.scheduleActionTimer()
+  }
+
+  private onActionTimeout(token: ActionTimerToken) {
+    if (token.seq !== this.actionTimerSeq) {
+      return
+    }
+
+    this.actionTimer = null
+    this.actionTimerToken = null
+
+    if (!this.table || this.inShowdown) return
+
+    const state = this.table.getState()
+    if (state.handComplete) return
+    if (state.actionSeat !== token.seat) return
+
+    const player = state.players.find((p) => p.seat === token.seat)
+    if (!player || player.id !== token.playerId) return
+    if (player.status !== 'active' || player.stack <= 0) return
+
+    const toCall = Math.max(0, state.currentBet - player.betThisRound)
+    const action: PlayerAction =
+      toCall > 0 ? { type: 'fold' } : { type: 'check' }
+
+    const err = this.applyAction(player.id, action)
+    if (!err && !this.inShowdown) this.onTableUpdate?.()
+  }
+
   private beginShowdown() {
     if (this.inShowdown) return
+    this.clearActionTimer()
     this.inShowdown = true
     this.showdownEndsAt = Date.now() + SHOWDOWN_MS
     this.onTableUpdate?.()
@@ -286,6 +379,7 @@ export class PokerRoom {
   }
 
   private finishHand() {
+    this.clearActionTimer()
     if (this.showdownTimer) {
       clearTimeout(this.showdownTimer)
       this.showdownTimer = null

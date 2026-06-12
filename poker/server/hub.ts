@@ -55,7 +55,26 @@ export class PokerHub {
         }
         break
       }
+      case 'add-chips-check': {
+        const conn = this.connections.get(ws)
+        if (!conn) {
+          this.send(ws, { type: 'error', message: 'Send join first' })
+          return
+        }
+        const room = this.room(conn.tableId)
+        const checkErr = room.checkAddChips(conn.playerId, msg.amount)
+        if (checkErr) {
+          this.send(ws, { type: 'error', message: checkErr })
+        } else {
+          this.send(ws, {
+            type: 'add-chips-check-ok',
+            amount: msg.amount,
+          })
+        }
+        break
+      }
       case 'sit':
+      case 'add-chips':
       case 'stand':
       case 'start-hand':
       case 'action': {
@@ -68,7 +87,22 @@ export class PokerHub {
         let err: string | null = null
         if (msg.type === 'sit')
           err = await room.sit(conn.playerId, msg.seat, msg.buyIn, msg.lockTx)
-        else if (msg.type === 'stand')
+        else if (msg.type === 'add-chips') {
+          const addResult = await room.addChips(
+            conn.playerId,
+            msg.amount,
+            msg.lockTx,
+          )
+          if (typeof addResult === 'string') {
+            err = addResult
+          } else {
+            this.send(ws, {
+              type: 'add-chips-ok',
+              amount: msg.amount,
+              appliesFromNextHand: addResult.appliesFromNextHand,
+            })
+          }
+        } else if (msg.type === 'stand')
           err = await room.stand(conn.playerId, msg.releaseTx)
         else if (msg.type === 'start-hand') err = room.startHand()
         else err = room.applyAction(conn.playerId, msg.action)

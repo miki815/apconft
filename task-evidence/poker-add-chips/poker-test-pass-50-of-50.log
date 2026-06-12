@@ -1,0 +1,367 @@
+
+> apconft@0.1.0 poker:test
+> npm test --prefix poker
+
+
+> @apconft/poker@0.1.0 test
+> node --import tsx --test src/hand-eval.test.ts src/pot.test.ts src/table.test.ts server/room.test.ts
+
+TAP version 13
+# Subtest: PokerRoom
+    # Subtest: sit, start hand, fold wins
+    ok 1 - sit, start hand, fold wins
+      ---
+      duration_ms: 65.6403
+      type: 'test'
+      ...
+    # Subtest: enters showdown phase with revealed cards
+    ok 2 - enters showdown phase with revealed cards
+      ---
+      duration_ms: 8.5992
+      type: 'test'
+      ...
+    # Subtest: stand clears seat without vault tx when skip enabled
+    ok 3 - stand clears seat without vault tx when skip enabled
+      ---
+      duration_ms: 0.7923
+      type: 'test'
+      ...
+    # Subtest: checkSit rejects taken seat before lock
+    ok 4 - checkSit rejects taken seat before lock
+      ---
+      duration_ms: 0.4703
+      type: 'test'
+      ...
+    # Subtest: removes busted player after hand ends
+    ok 5 - removes busted player after hand ends
+      ---
+      duration_ms: 5135.6391
+      type: 'test'
+      ...
+    # Subtest: first sit does not auto-start
+    ok 6 - first sit does not auto-start
+      ---
+      duration_ms: 0.7821
+      type: 'test'
+      ...
+    # Subtest: second sit auto-starts hand
+    ok 7 - second sit auto-starts hand
+      ---
+      duration_ms: 1.1894
+      type: 'test'
+      ...
+    # Subtest: manual startHand after auto-start rejects duplicate
+    ok 8 - manual startHand after auto-start rejects duplicate
+      ---
+      duration_ms: 0.9961
+      type: 'test'
+      ...
+    # Subtest: third sit allowed while auto-next hand runs
+    ok 9 - third sit allowed while auto-next hand runs
+      ---
+      duration_ms: 4.872
+      type: 'test'
+      ...
+    # Subtest: auto-starts next hand after fold with two seated
+    ok 10 - auto-starts next hand after fold with two seated
+      ---
+      duration_ms: 2.3655
+      type: 'test'
+      ...
+    # Subtest: does not auto-start next hand when one seated remains
+    ok 11 - does not auto-start next hand when one seated remains
+      ---
+      duration_ms: 5115.5469
+      type: 'test'
+      ...
+    # Subtest: manual startHand after auto-next rejects duplicate
+    ok 12 - manual startHand after auto-next rejects duplicate
+      ---
+      duration_ms: 0.9793
+      type: 'test'
+      ...
+    # Subtest: failed sit does not auto-start
+    ok 13 - failed sit does not auto-start
+      ---
+      duration_ms: 0.3601
+      type: 'test'
+      ...
+    1..13
+ok 1 - PokerRoom
+  ---
+  duration_ms: 10341.7346
+  type: 'suite'
+  ...
+# Subtest: PokerRoom waiting sit
+    # Subtest: allows sit during active hand without joining current HoldemTable
+    ok 1 - allows sit during active hand without joining current HoldemTable
+      ---
+      duration_ms: 0.6928
+      type: 'test'
+      ...
+    # Subtest: youState for waiting player has seat but no cards or action
+    ok 2 - youState for waiting player has seat but no cards or action
+      ---
+      duration_ms: 0.8248
+      type: 'test'
+      ...
+    # Subtest: waiting player enters next hand after auto-next
+    ok 3 - waiting player enters next hand after auto-next
+      ---
+      duration_ms: 0.7676
+      type: 'test'
+      ...
+    # Subtest: third sit mid-hand does not change current hand player count
+    ok 4 - third sit mid-hand does not change current hand player count
+      ---
+      duration_ms: 0.4896
+      type: 'test'
+      ...
+    # Subtest: checkSit rejects taken seat and already seated during active hand
+    ok 5 - checkSit rejects taken seat and already seated during active hand
+      ---
+      duration_ms: 0.4397
+      type: 'test'
+      ...
+    # Subtest: allows sit during showdown display without joining current hand
+    ok 6 - allows sit during showdown display without joining current hand
+      ---
+      duration_ms: 2.4412
+      type: 'test'
+      ...
+    # Subtest: rejects applyAction from waiting player
+    ok 7 - rejects applyAction from waiting player
+      ---
+      duration_ms: 0.769
+      type: 'test'
+      ...
+    1..7
+ok 2 - PokerRoom waiting sit
+  ---
+  duration_ms: 6.9433
+  type: 'suite'
+  ...
+# Subtest: PokerRoom action timeout
+    # Subtest: auto-checks when toCall is 0 and timeout expires
+    ok 1 - auto-checks when toCall is 0 and timeout expires
+      ---
+      duration_ms: 85.5853
+      type: 'test'
+      ...
+    # Subtest: auto-folds when toCall is positive and timeout expires
+    ok 2 - auto-folds when toCall is positive and timeout expires
+      ---
+      duration_ms: 31.8563
+      type: 'test'
+      ...
+    # Subtest: resets timer after manual action
+    ok 3 - resets timer after manual action
+      ---
+      duration_ms: 109.8942
+      type: 'test'
+      ...
+    # Subtest: clears timer when hand ends by fold
+    ok 4 - clears timer when hand ends by fold
+      ---
+      duration_ms: 85.1507
+      type: 'test'
+      ...
+    # Subtest: does not act during showdown display
+    ok 5 - does not act during showdown display
+      ---
+      duration_ms: 88.118
+      type: 'test'
+      ...
+    # Subtest: auto-start and auto-next still work with action timer enabled
+    ok 6 - auto-start and auto-next still work with action timer enabled
+      ---
+      duration_ms: 1.0738
+      type: 'test'
+      ...
+    # Subtest: does not double-act when player already acted manually
+    ok 7 - does not double-act when player already acted manually
+      ---
+      duration_ms: 181.9552
+      type: 'test'
+      ...
+    # Subtest: stale seq guard ignores superseded timeout callback
+    ok 8 - stale seq guard ignores superseded timeout callback
+      ---
+      duration_ms: 95.9571
+      type: 'test'
+      ...
+    1..8
+ok 3 - PokerRoom action timeout
+  ---
+  duration_ms: 680.848
+  type: 'suite'
+  ...
+# Subtest: PokerRoom add chips
+    # Subtest: addChips when no hand increases stack immediately
+    ok 1 - addChips when no hand increases stack immediately
+      ---
+      duration_ms: 2.3713
+      type: 'test'
+      ...
+    # Subtest: addChips during active hand does not change engine stack
+    ok 2 - addChips during active hand does not change engine stack
+      ---
+      duration_ms: 0.7878
+      type: 'test'
+      ...
+    # Subtest: pending add applies on next hand after finishHand
+    ok 3 - pending add applies on next hand after finishHand
+      ---
+      duration_ms: 0.8049
+      type: 'test'
+      ...
+    # Subtest: two addChips during same hand accumulate pending
+    ok 4 - two addChips during same hand accumulate pending
+      ---
+      duration_ms: 5.0286
+      type: 'test'
+      ...
+    # Subtest: applyPendingStackAdds is idempotent
+    ok 5 - applyPendingStackAdds is idempotent
+      ---
+      duration_ms: 0.8387
+      type: 'test'
+      ...
+    # Subtest: checkAddChips rejects invalid cases
+    ok 6 - checkAddChips rejects invalid cases
+      ---
+      duration_ms: 0.3892
+      type: 'test'
+      ...
+    # Subtest: busted player with pending add stays seated after hand
+    ok 7 - busted player with pending add stays seated after hand
+      ---
+      duration_ms: 1.6837
+      type: 'test'
+      ...
+    # Subtest: syncStacksFromTable preserves pendingStackAdd
+    ok 8 - syncStacksFromTable preserves pendingStackAdd
+      ---
+      duration_ms: 0.6564
+      type: 'test'
+      ...
+    # Subtest: snapshot seats expose only playerId and stack
+    ok 9 - snapshot seats expose only playerId and stack
+      ---
+      duration_ms: 0.5175
+      type: 'test'
+      ...
+    # Subtest: waiting player addChips during hand enters next hand with top-up
+    ok 10 - waiting player addChips during hand enters next hand with top-up
+      ---
+      duration_ms: 1.2411
+      type: 'test'
+      ...
+    1..10
+ok 4 - PokerRoom add chips
+  ---
+  duration_ms: 15.0346
+  type: 'suite'
+  ...
+# Subtest: hand-eval
+    # Subtest: ranks pair above high card
+    ok 1 - ranks pair above high card
+      ---
+      duration_ms: 6.0021
+      type: 'test'
+      ...
+    # Subtest: ranks flush above straight
+    ok 2 - ranks flush above straight
+      ---
+      duration_ms: 1.7997
+      type: 'test'
+      ...
+    # Subtest: detects wheel straight
+    ok 3 - detects wheel straight
+      ---
+      duration_ms: 2.0005
+      type: 'test'
+      ...
+    # Subtest: detects straight flush
+    ok 4 - detects straight flush
+      ---
+      duration_ms: 0.5936
+      type: 'test'
+      ...
+    # Subtest: splits tie on same full house
+    ok 5 - splits tie on same full house
+      ---
+      duration_ms: 1.1108
+      type: 'test'
+      ...
+    1..5
+ok 5 - hand-eval
+  ---
+  duration_ms: 14.5433
+  type: 'suite'
+  ...
+# Subtest: pot
+    # Subtest: builds main and side pot
+    ok 1 - builds main and side pot
+      ---
+      duration_ms: 31.5913
+      type: 'test'
+      ...
+    # Subtest: excludes folded from eligibility
+    ok 2 - excludes folded from eligibility
+      ---
+      duration_ms: 0.3496
+      type: 'test'
+      ...
+    # Subtest: splits remainder chip
+    ok 3 - splits remainder chip
+      ---
+      duration_ms: 0.3747
+      type: 'test'
+      ...
+    1..3
+ok 6 - pot
+  ---
+  duration_ms: 37.6354
+  type: 'suite'
+  ...
+# Subtest: HoldemTable
+    # Subtest: posts blinds and deals hole cards
+    ok 1 - posts blinds and deals hole cards
+      ---
+      duration_ms: 3.4726
+      type: 'test'
+      ...
+    # Subtest: awards pot on preflop fold
+    ok 2 - awards pot on preflop fold
+      ---
+      duration_ms: 1.6781
+      type: 'test'
+      ...
+    # Subtest: runs hand to showdown with checks
+    ok 3 - runs hand to showdown with checks
+      ---
+      duration_ms: 10.1347
+      type: 'test'
+      ...
+    # Subtest: rejects check when facing bet
+    ok 4 - rejects check when facing bet
+      ---
+      duration_ms: 0.6096
+      type: 'test'
+      ...
+    1..4
+ok 7 - HoldemTable
+  ---
+  duration_ms: 18.4009
+  type: 'suite'
+  ...
+1..7
+# tests 50
+# suites 7
+# pass 50
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 23325.477

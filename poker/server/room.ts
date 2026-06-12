@@ -1,6 +1,11 @@
 import { Connection, PublicKey } from '@solana/web3.js'
 import { HoldemTable } from '../src/index.js'
-import { DEFAULT_TABLE_ID, MAX_SEATS, type YouState } from '../src/protocol.js'
+import {
+  DEFAULT_TABLE_ID,
+  MAX_SEATS,
+  type SeatInfo,
+  type YouState,
+} from '../src/protocol.js'
 import type { PlayerAction, TableState } from '../src/types.js'
 import {
   isSkipVaultCheck,
@@ -17,13 +22,14 @@ export const ACTION_TIMEOUT_MS = 30_000
 interface Seat {
   playerId: string
   stack: number
+  pendingStackAdd: number
 }
 
 export interface RoomSnapshot {
   tableId: string
   smallBlind: number
   bigBlind: number
-  seats: (Seat | null)[]
+  seats: (SeatInfo | null)[]
   state: TableState | null
   handInProgress: boolean
   showdownActive: boolean
@@ -88,7 +94,7 @@ export class PokerRoom {
         const live = state.players.find((p) => p.seat === seatIdx)
         if (live) return { playerId: s.playerId, stack: live.stack }
       }
-      return { ...s }
+      return { playerId: s.playerId, stack: s.stack }
     })
 
     return {
@@ -144,7 +150,7 @@ export class PokerRoom {
     }
 
     const seatedBefore = this.seats.filter(Boolean).length
-    this.seats[seat] = { playerId, stack: buyIn }
+    this.seats[seat] = { playerId, stack: buyIn, pendingStackAdd: 0 }
     this.tryAutoStartHand(seatedBefore)
     return null
   }
@@ -158,6 +164,68 @@ export class PokerRoom {
     if (this.seats[seat]) return 'Seat taken'
     if (this.findSeat(playerId) !== null) return 'Already seated'
     return null
+  }
+
+  /** Validates chip add without requiring lock tx (preflight). */
+  checkAddChips(playerId: string, amount: number): string | null {
+    const seat = this.findSeat(playerId)
+    if (seat === null || !this.seats[seat]) return 'Not seated'
+    if (!Number.isInteger(amount) || amount <= 0) return 'amount must be positive'
+    return null
+  }
+
+  async addChips(
+    playerId: string,
+    amount: number,
+    lockTx?: string,
+  ): Promise<string | { appliesFromNextHand: boolean }> {
+    let err = this.checkAddChips(playerId, amount)
+    if (err) return err
+
+    const vaultRequired = !isSkipVaultCheck() && this.tableMint !== null
+
+    if (vaultRequired) {
+      let pubkey: PublicKey
+      try {
+        pubkey = new PublicKey(playerId)
+      } catch {
+        return 'Invalid wallet address'
+      }
+
+      if (!lockTx) {
+        return 'Missing lock transaction — sign lock_for_table in wallet first'
+      }
+
+      const verifyErr = await verifyTableVaultTx(
+        this.vaultConnection,
+        lockTx,
+        pubkey,
+        this.tableMint!,
+        'lock_for_table',
+        amount,
+      )
+      if (verifyErr) return verifyErr
+
+      err = this.checkAddChips(playerId, amount)
+      if (err) return err
+
+      const replay = this.consumeVaultTx(lockTx)
+      if (replay) return replay
+    }
+
+    const seatNow = this.findSeat(playerId)
+    if (seatNow === null || this.seats[seatNow]?.playerId !== playerId) {
+      return 'Not seated'
+    }
+
+    const s = this.seats[seatNow]!
+    const appliesFromNextHand = this.isHandActive()
+    if (appliesFromNextHand) {
+      s.pendingStackAdd += amount
+    } else {
+      s.stack += amount
+    }
+    return { appliesFromNextHand }
   }
 
   async stand(playerId: string, releaseTx?: string): Promise<string | null> {
@@ -199,6 +267,7 @@ export class PokerRoom {
 
   startHand(): string | null {
     if (this.isHandActive()) return 'Hand already in progress'
+    this.applyPendingStackAdds()
     this.removeBustedSeats()
 
     const seated = this.seats
@@ -386,6 +455,7 @@ export class PokerRoom {
     this.inShowdown = false
     this.showdownEndsAt = null
     this.syncStacksFromTable()
+    this.applyPendingStackAdds()
     this.removeBustedSeats()
     this.table = null
     this.tryAutoStartNextHandAfterFinish()
@@ -414,8 +484,23 @@ export class PokerRoom {
     for (const p of state.players) {
       const seat = this.findSeat(p.id)
       if (seat !== null && this.seats[seat]) {
-        this.seats[seat] = { playerId: p.id, stack: p.stack }
+        const pending = this.seats[seat]!.pendingStackAdd
+        this.seats[seat] = {
+          playerId: p.id,
+          stack: p.stack,
+          pendingStackAdd: pending,
+        }
       }
+    }
+  }
+
+  /** Idempotent: merges pending into stack and resets pending to 0. */
+  private applyPendingStackAdds() {
+    for (let seat = 0; seat < MAX_SEATS; seat++) {
+      const s = this.seats[seat]
+      if (!s || s.pendingStackAdd <= 0) continue
+      s.stack += s.pendingStackAdd
+      s.pendingStackAdd = 0
     }
   }
 

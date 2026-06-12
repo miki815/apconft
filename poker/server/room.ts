@@ -19,6 +19,7 @@ export { DEFAULT_TABLE_ID, MAX_SEATS }
 export const SHOWDOWN_MS = 5000
 export const ACTION_TIMEOUT_MS = 30_000
 export const REBUY_GRACE_MS = 60_000
+export const RUNOUT_STREET_MS = 1200
 
 interface Seat {
   playerId: string
@@ -61,9 +62,12 @@ export class PokerRoom {
   private showdownTimer: ReturnType<typeof setTimeout> | null = null
   private readonly actionTimeoutMs: number
   private readonly rebuyGraceMs: number
+  private readonly runoutStreetMs: number
   private actionTimer: ReturnType<typeof setTimeout> | null = null
   private actionTimerSeq = 0
   private actionTimerToken: ActionTimerToken | null = null
+  private runoutTimer: ReturnType<typeof setTimeout> | null = null
+  private runoutTimerSeq = 0
   private readonly rebuyTimers = new Map<number, ReturnType<typeof setTimeout>>()
   private readonly rebuyTimerSeq = new Map<number, number>()
   private readonly vaultConnection = new Connection(SOLANA_RPC_URL, 'confirmed')
@@ -79,6 +83,7 @@ export class PokerRoom {
       bigBlind?: number
       actionTimeoutMs?: number
       rebuyGraceMs?: number
+      runoutStreetMs?: number
     },
   ) {
     this.tableId = tableId
@@ -86,6 +91,7 @@ export class PokerRoom {
     this.bigBlind = opts?.bigBlind ?? 10
     this.actionTimeoutMs = opts?.actionTimeoutMs ?? ACTION_TIMEOUT_MS
     this.rebuyGraceMs = opts?.rebuyGraceMs ?? REBUY_GRACE_MS
+    this.runoutStreetMs = opts?.runoutStreetMs ?? RUNOUT_STREET_MS
   }
 
   private seatInfo(
@@ -345,6 +351,7 @@ export class PokerRoom {
 
   applyAction(playerId: string, action: PlayerAction): string | null {
     this.clearActionTimer()
+    this.clearRunoutTimer()
     if (!this.table) return 'No hand in progress'
     const r = this.table.applyAction(playerId, action)
     if (!r.ok) {
@@ -352,16 +359,24 @@ export class PokerRoom {
       return r.error ?? 'Invalid action'
     }
 
-    if (r.state.handComplete) {
+    this.afterTableProgress()
+    return null
+  }
+
+  private afterTableProgress() {
+    if (!this.table) return
+    const state = this.table.getState()
+    if (state.handComplete) {
       if (this.table.isShowdownReveal()) {
         this.beginShowdown()
       } else {
         this.finishHand()
       }
+    } else if (this.table.isRunoutPending()) {
+      this.continueRunout()
     } else {
       this.scheduleActionTimer()
     }
-    return null
   }
 
   youState(playerId: string): YouState {
@@ -439,6 +454,83 @@ export class PokerRoom {
     return this.seats[seat]?.stack ?? 0
   }
 
+  private clearRunoutTimer() {
+    if (this.runoutTimer) {
+      clearTimeout(this.runoutTimer)
+      this.runoutTimer = null
+    }
+    this.runoutTimerSeq++
+  }
+
+  private continueRunout() {
+    if (!this.table || this.inShowdown) return
+    if (this.runoutStreetMs <= 0) {
+      this.drainRunout()
+      return
+    }
+    this.scheduleRunoutStep()
+  }
+
+  private drainRunout() {
+    if (!this.table) return
+    while (this.table.isRunoutPending()) {
+      const r = this.table.advanceRunout()
+      if (!r.ok) break
+      if (r.state.handComplete) {
+        if (this.table.isShowdownReveal()) {
+          this.beginShowdown()
+        } else {
+          this.finishHand()
+        }
+        return
+      }
+    }
+  }
+
+  private scheduleRunoutStep() {
+    if (this.runoutTimer) {
+      clearTimeout(this.runoutTimer)
+      this.runoutTimer = null
+    }
+    if (!this.table || this.inShowdown) return
+    if (!this.table.isRunoutPending()) return
+
+    const seq = ++this.runoutTimerSeq
+    this.runoutTimer = setTimeout(
+      () => this.onRunoutStep(seq),
+      this.runoutStreetMs,
+    )
+    this.runoutTimer.unref()
+  }
+
+  private onRunoutStep(seq: number) {
+    if (seq !== this.runoutTimerSeq) return
+
+    this.runoutTimer = null
+
+    if (!this.table || this.inShowdown) return
+    if (!this.table.isRunoutPending()) return
+
+    const r = this.table.advanceRunout()
+    if (!r.ok) return
+
+    this.onTableUpdate?.()
+
+    if (r.state.handComplete) {
+      this.clearRunoutTimer()
+      if (this.table.isShowdownReveal()) {
+        this.beginShowdown()
+      } else {
+        this.finishHand()
+      }
+      return
+    }
+
+    if (this.table.isRunoutPending()) {
+      this.scheduleRunoutStep()
+    }
+  }
+
   private clearActionTimer() {
     if (this.actionTimer) {
       clearTimeout(this.actionTimer)
@@ -510,6 +602,7 @@ export class PokerRoom {
   private beginShowdown() {
     if (this.inShowdown) return
     this.clearActionTimer()
+    this.clearRunoutTimer()
     this.inShowdown = true
     this.showdownEndsAt = Date.now() + SHOWDOWN_MS
     this.onTableUpdate?.()
@@ -523,6 +616,7 @@ export class PokerRoom {
 
   private finishHand() {
     this.clearActionTimer()
+    this.clearRunoutTimer()
     if (this.showdownTimer) {
       clearTimeout(this.showdownTimer)
       this.showdownTimer = null

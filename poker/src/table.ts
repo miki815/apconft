@@ -98,6 +98,34 @@ export class HoldemTable {
     return this.showdownReveal
   }
 
+  /** True when locked runout is in progress and board still has streets to deal. */
+  isRunoutPending(): boolean {
+    return (
+      !this.handComplete &&
+      this.actionSeat === null &&
+      this.board.length < 5 &&
+      this.isLockedRunout()
+    )
+  }
+
+  /** Deal one runout street segment, or showdown when board reaches 5. */
+  advanceRunout(): ActionResult {
+    if (this.handComplete) return this.fail('Hand is complete')
+    if (!this.isRunoutPending()) {
+      return this.fail('No runout pending')
+    }
+
+    this.dealRunoutSegment()
+    this.needsAction.clear()
+    this.actionSeat = null
+
+    if (this.board.length === 5) {
+      this.showdown()
+    }
+
+    return { ok: true, state: this.getState() }
+  }
+
   getStateForPlayer(playerId: string): TableState {
     const base = this.getState()
     return {
@@ -304,6 +332,19 @@ export class HoldemTable {
       return
     }
 
+    if (this.isLockedRunout()) {
+      this.dealRunoutSegment()
+      this.currentBet = 0
+      this.minRaiseTo = this.bigBlind
+      this.lastAggressorSeat = null
+      for (const p of this.playersInHand()) {
+        p.betThisRound = 0
+      }
+      this.needsAction.clear()
+      this.actionSeat = null
+      return
+    }
+
     const nextStreet = this.nextStreet()
     if (nextStreet === 'showdown') {
       this.showdown()
@@ -349,15 +390,38 @@ export class HoldemTable {
     }
   }
 
+  private isLockedRunout(): boolean {
+    const inHand = this.playersInHand()
+    if (inHand.length < 2) return false
+    const activeWithStack = inHand.filter(
+      (p) => p.status === 'active' && p.stack > 0,
+    )
+    if (activeWithStack.length !== 1) return false
+    const lone = activeWithStack[0]!
+    return inHand.every(
+      (p) => p.id === lone.id || p.status === 'all-in',
+    )
+  }
+
+  private dealRunoutSegment() {
+    if (this.board.length === 0) {
+      this.deckIdx += 1
+      this.board.push(this.draw(), this.draw(), this.draw())
+      this.bettingRound = 'flop'
+    } else if (this.board.length === 3) {
+      this.deckIdx += 1
+      this.board.push(this.draw())
+      this.bettingRound = 'turn'
+    } else if (this.board.length === 4) {
+      this.deckIdx += 1
+      this.board.push(this.draw())
+      this.bettingRound = 'river'
+    }
+  }
+
   private runOutBoard() {
     while (this.board.length < 5) {
-      if (this.board.length === 0) {
-        this.deckIdx += 1
-        this.board.push(this.draw(), this.draw(), this.draw())
-      } else {
-        this.deckIdx += 1
-        this.board.push(this.draw())
-      }
+      this.dealRunoutSegment()
     }
     this.bettingRound = 'showdown'
   }

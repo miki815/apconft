@@ -4,10 +4,12 @@ import { PokerRoom, SHOWDOWN_MS } from './room.js'
 
 process.env.POKER_SKIP_VAULT_CHECK = '1'
 
-const noTimer = { actionTimeoutMs: 0 }
-const fastTimer = { actionTimeoutMs: 20 }
-const fastRebuy = { actionTimeoutMs: 0, rebuyGraceMs: 50 }
+const noTimer = { actionTimeoutMs: 0, runoutStreetMs: 0 }
+const fastTimer = { actionTimeoutMs: 20, runoutStreetMs: 0 }
+const fastRebuy = { actionTimeoutMs: 0, rebuyGraceMs: 50, runoutStreetMs: 0 }
+const fastRunout = { actionTimeoutMs: 0, runoutStreetMs: 50 }
 const timerWait = fastTimer.actionTimeoutMs! + 50
+const runoutWait = fastRunout.runoutStreetMs! + 50
 const rebuyWait = fastRebuy.rebuyGraceMs! + 50
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -64,6 +66,33 @@ function forceFinishShowdown(room: PokerRoom) {
     finishHand(): void
   }
   if (r.inShowdown) r.finishHand()
+}
+
+async function waitForRunoutTimer() {
+  await sleep(runoutWait)
+  await flushTimers()
+}
+
+async function driveThreeWayLockedRunout(room: PokerRoom) {
+  await room.sit('a', 0, 200)
+  await room.sit('b', 1, 50)
+  await room.sit('c', 2, 50)
+
+  for (let i = 0; i < 30; i++) {
+    const st = room.snapshot().state
+    if (!st || st.board.length > 0 || st.handComplete) return
+    if (st.actionSeat === null) return
+    const actor = st.players.find((p) => p.seat === st.actionSeat)!
+    if (actor.id === 'a') {
+      if (st.currentBet < 100) {
+        assert.equal(room.applyAction('a', { type: 'raise', total: 100 }), null)
+      } else {
+        assert.equal(room.applyAction('a', { type: 'call' }), null)
+      }
+    } else {
+      assert.equal(room.applyAction(actor.id, { type: 'all-in' }), null)
+    }
+  }
 }
 
 async function allInAndFinish(room: PokerRoom) {
@@ -987,5 +1016,51 @@ describe('PokerRoom rebuy grace', () => {
     assert.ok(seated)
     assert.ok(seated!.stack > 0)
     assert.equal(seated!.rebuyDeadlineAt ?? null, null)
+  })
+})
+
+describe('PokerRoom locked runout', () => {
+  it('staged runout broadcasts board growth 3 to 4 to 5', async () => {
+    const room = new PokerRoom('test', fastRunout)
+    const seen = new Set<number>()
+    room.onTableUpdate = () => {
+      const len = room.snapshot().state?.board.length ?? 0
+      if (len > 0) seen.add(len)
+    }
+
+    await driveThreeWayLockedRunout(room)
+    seen.add(room.snapshot().state!.board.length)
+
+    const deadline = Date.now() + 2000
+    while (Date.now() < deadline) {
+      const snap = room.snapshot()
+      if (snap.showdownActive || snap.state?.handComplete) break
+      await sleep(30)
+      await flushTimers()
+    }
+
+    assert.ok(seen.has(3))
+    assert.ok(seen.has(4))
+    assert.ok(seen.has(5))
+  })
+
+  it('you.canAct is false for lone active player during runout', async () => {
+    const room = new PokerRoom('test', fastRunout)
+    await driveThreeWayLockedRunout(room)
+
+    const snap = room.snapshot().state!
+    assert.equal(snap.actionSeat, null)
+    assert.equal(snap.board.length, 3)
+
+    const you = room.youState('a')
+    assert.equal(you.canAct, false)
+  })
+
+  it('rejects applyAction from lone active player during runout', async () => {
+    const room = new PokerRoom('test', fastRunout)
+    await driveThreeWayLockedRunout(room)
+
+    assert.equal(room.snapshot().state!.board.length, 3)
+    assert.notEqual(room.applyAction('a', { type: 'fold' }), null)
   })
 })

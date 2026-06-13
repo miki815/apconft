@@ -321,7 +321,36 @@ export class HoldemTable {
     player.betThisHand += amount
   }
 
+  private returnUncalledBets() {
+    const inHand = this.playersInHand()
+    if (inHand.length < 2) return
+
+    let maxBet = 0
+    for (const p of inHand) {
+      if (p.betThisRound > maxBet) maxBet = p.betThisRound
+    }
+
+    let secondBet = 0
+    for (const p of inHand) {
+      if (p.betThisRound < maxBet && p.betThisRound > secondBet) {
+        secondBet = p.betThisRound
+      }
+    }
+
+    if (maxBet <= secondBet) return
+
+    const topPlayers = inHand.filter((p) => p.betThisRound === maxBet)
+    if (topPlayers.length !== 1) return
+
+    const refund = maxBet - secondBet
+    const top = topPlayers[0]!
+    top.stack += refund
+    top.betThisRound -= refund
+    top.betThisHand -= refund
+  }
+
   private endBettingRound() {
+    this.returnUncalledBets()
     const canBetMore = this.playersInHand().some(
       (p) => p.status === 'active' && p.stack > 0,
     )

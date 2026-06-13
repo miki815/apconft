@@ -361,3 +361,310 @@ describe('HoldemTable locked runout', () => {
     assert.equal(r.error, 'No runout pending')
   })
 })
+
+function chipTotal(table: HoldemTable): number {
+  const s = table.getState()
+  return s.players.reduce((n, p) => n + p.stack + p.betThisHand, 0)
+}
+
+function driveCheapPreflop(table: HoldemTable, target = 20) {
+  for (let i = 0; i < 30; i++) {
+    const s = table.getState()
+    if (s.bettingRound !== 'preflop' || s.handComplete || s.actionSeat === null) {
+      return
+    }
+    const actor = s.players.find((p) => p.seat === s.actionSeat)!
+    const toCall = s.currentBet - actor.betThisRound
+    if (toCall > 0) {
+      act(table, actor.id, { type: 'call' })
+    } else if (s.currentBet < target) {
+      act(table, actor.id, { type: 'raise', total: target })
+    } else {
+      act(table, actor.id, { type: 'check' })
+    }
+  }
+}
+
+function driveFourWayFlopRefund(table: HoldemTable) {
+  driveCheapPreflop(table)
+  for (let i = 0; i < 60; i++) {
+    const s = table.getState()
+    if (s.bettingRound !== 'flop' || s.handComplete || s.actionSeat === null) {
+      return
+    }
+    const actor = s.players.find((p) => p.seat === s.actionSeat)!
+    const toCall = s.currentBet - actor.betThisRound
+    if (actor.id === 'A') {
+      if (toCall === 0 && s.currentBet < 200) {
+        act(table, 'A', { type: 'bet', total: 200 })
+      } else if (toCall > 0) {
+        act(table, 'A', { type: 'raise', total: 200 })
+      } else {
+        act(table, 'A', { type: 'check' })
+      }
+    } else if (actor.id === 'B' || actor.id === 'D') {
+      act(table, actor.id, { type: 'all-in' })
+    } else if (actor.id === 'C' && s.currentBet > 0) {
+      act(table, 'C', { type: 'fold' })
+    } else if (toCall > 0) {
+      act(table, actor.id, { type: 'call' })
+    } else {
+      act(table, actor.id, { type: 'check' })
+    }
+  }
+}
+
+describe('HoldemTable uncalled bet refund', () => {
+  it('returns uncalled excess heads-up after short stack all-in', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'deep', seat: 0, stack: 500 },
+        { id: 'short', seat: 1, stack: 100 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 0,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    const startTotal = chipTotal(table)
+
+    const pre = table.getState()
+    const deep = pre.players.find((p) => p.id === 'deep')!
+    const short = pre.players.find((p) => p.id === 'short')!
+    if (pre.actionSeat === deep.seat) {
+      act(table, 'deep', { type: 'raise', total: 200 })
+      act(table, 'short', { type: 'all-in' })
+    } else {
+      act(table, 'short', { type: 'all-in' })
+      act(table, 'deep', { type: 'call' })
+    }
+
+    const s = table.getState()
+    const deepEnd = s.players.find((p) => p.id === 'deep')!
+    const shortEnd = s.players.find((p) => p.id === 'short')!
+    assert.equal(deepEnd.betThisHand, 100)
+    assert.equal(shortEnd.betThisHand, 100)
+    assert.equal(chipTotal(table), startTotal)
+    assert.equal(table.isRunoutPending(), true)
+  })
+
+  it('4-way flop uncalled refund conserves chips through locked runout', () => {
+    const startStacks = 500 + 70 + 500 + 70
+    const table = new HoldemTable({
+      players: [
+        { id: 'A', seat: 0, stack: 500 },
+        { id: 'B', seat: 1, stack: 70 },
+        { id: 'C', seat: 2, stack: 500 },
+        { id: 'D', seat: 3, stack: 70 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 0,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    driveFourWayFlopRefund(table)
+
+    const mid = table.getState()
+    const a = mid.players.find((p) => p.id === 'A')!
+    const b = mid.players.find((p) => p.id === 'B')!
+    const c = mid.players.find((p) => p.id === 'C')!
+    assert.equal(c.status, 'folded')
+    assert.equal(a.betThisHand, b.betThisHand)
+    assert.ok(a.betThisHand < 220, 'overbet excess should be refunded from betThisHand')
+    assert.equal(table.isRunoutPending(), true)
+
+    while (table.isRunoutPending()) {
+      const r = table.advanceRunout()
+      assert.equal(r.ok, true)
+    }
+
+    const end = table.getState()
+    assert.equal(end.handComplete, true)
+    const endStacks = end.players.reduce((n, p) => n + p.stack, 0)
+    assert.equal(endStacks, startStacks)
+  })
+
+  it('3-way locked runout refunds uncalled before runout', () => {
+    const startTotal = 500 + 50 + 50
+    const table = new HoldemTable({
+      players: [
+        { id: 'a', seat: 0, stack: 500 },
+        { id: 'b', seat: 1, stack: 50 },
+        { id: 'c', seat: 2, stack: 50 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 0,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+
+    for (let i = 0; i < 20; i++) {
+      const s = table.getState()
+      if (s.board.length > 0 || s.handComplete) break
+      if (s.actionSeat === null) break
+      const actor = s.players.find((p) => p.seat === s.actionSeat)!
+      if (actor.id === 'a') {
+        if (s.currentBet < 200) {
+          act(table, 'a', { type: 'raise', total: 200 })
+        } else {
+          act(table, 'a', { type: 'call' })
+        }
+      } else {
+        act(table, actor.id, { type: 'all-in' })
+      }
+    }
+
+    const mid = table.getState()
+    const a = mid.players.find((p) => p.id === 'a')!
+    const shortMatched = Math.min(
+      mid.players.find((p) => p.id === 'b')!.betThisHand,
+      mid.players.find((p) => p.id === 'c')!.betThisHand,
+    )
+    assert.equal(a.betThisHand, shortMatched)
+    assert.equal(a.stack + a.betThisHand, 500)
+    assert.equal(table.isRunoutPending(), true)
+
+    while (table.isRunoutPending()) {
+      const r = table.advanceRunout()
+      assert.equal(r.ok, true)
+    }
+
+    const end = table.getState()
+    assert.equal(end.handComplete, true)
+    const endStacks = end.players.reduce((n, p) => n + p.stack, 0)
+    assert.equal(endStacks, startTotal)
+  })
+
+  it('does not refund when all in-hand players matched the same amount', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'a', seat: 0, stack: 500 },
+        { id: 'b', seat: 1, stack: 500 },
+        { id: 'c', seat: 2, stack: 500 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 0,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    const startTotal = chipTotal(table)
+
+    for (let i = 0; i < 20; i++) {
+      const s = table.getState()
+      if (s.bettingRound !== 'preflop' || s.handComplete || s.actionSeat === null) {
+        break
+      }
+      const actor = s.players.find((p) => p.seat === s.actionSeat)!
+      const toCall = s.currentBet - actor.betThisRound
+      if (toCall > 0) {
+        act(table, actor.id, { type: 'call' })
+      } else {
+        act(table, actor.id, { type: 'check' })
+      }
+    }
+
+    const s = table.getState()
+    for (const p of s.players) {
+      assert.equal(p.betThisHand, 10)
+    }
+    assert.equal(chipTotal(table), startTotal)
+    assert.equal(s.bettingRound, 'flop')
+  })
+
+  it('does not refund when two players tie at the top bet', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'A', seat: 0, stack: 500 },
+        { id: 'B', seat: 1, stack: 100 },
+        { id: 'C', seat: 2, stack: 100 },
+        { id: 'D', seat: 3, stack: 500 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 0,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    const startTotal = chipTotal(table)
+
+    for (let i = 0; i < 30; i++) {
+      const s = table.getState()
+      if (s.bettingRound !== 'preflop' || s.handComplete || s.actionSeat === null) {
+        break
+      }
+      const actor = s.players.find((p) => p.seat === s.actionSeat)!
+      const toCall = s.currentBet - actor.betThisRound
+      if (actor.id === 'A' && s.currentBet < 200) {
+        act(table, 'A', { type: 'raise', total: 200 })
+      } else if (actor.id === 'B' || actor.id === 'C') {
+        act(table, actor.id, { type: 'all-in' })
+      } else if (toCall > 0) {
+        act(table, actor.id, { type: 'call' })
+      } else {
+        act(table, actor.id, { type: 'check' })
+      }
+    }
+
+    const s = table.getState()
+    const a = s.players.find((p) => p.id === 'A')!
+    const b = s.players.find((p) => p.id === 'B')!
+    const c = s.players.find((p) => p.id === 'C')!
+    const d = s.players.find((p) => p.id === 'D')!
+    assert.equal(a.betThisHand, 200)
+    assert.equal(d.betThisHand, 200)
+    assert.equal(b.betThisHand, 100)
+    assert.equal(c.betThisHand, 100)
+    assert.equal(chipTotal(table), startTotal)
+  })
+
+  it('matched folded chips stay in pot at showdown', () => {
+    const startTotal = 200 + 200 + 200
+    const table = new HoldemTable({
+      players: [
+        { id: 'a', seat: 0, stack: 200 },
+        { id: 'b', seat: 1, stack: 200 },
+        { id: 'c', seat: 2, stack: 200 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 0,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+
+    for (let i = 0; i < 40; i++) {
+      const s = table.getState()
+      if (s.handComplete) break
+      if (s.actionSeat === null) break
+      const actor = s.players.find((p) => p.seat === s.actionSeat)!
+      const toCall = s.currentBet - actor.betThisRound
+      if (s.bettingRound === 'preflop') {
+        if (toCall > 0) {
+          act(table, actor.id, { type: 'call' })
+        } else {
+          act(table, actor.id, { type: 'check' })
+        }
+      } else if (s.bettingRound === 'flop' && actor.id === 'a') {
+        act(table, 'a', { type: 'fold' })
+      } else if (toCall > 0) {
+        act(table, actor.id, { type: 'call' })
+      } else {
+        act(table, actor.id, { type: 'check' })
+      }
+    }
+
+    const end = table.getState()
+    assert.equal(end.handComplete, true)
+    const potSum = end.pots.reduce((n, p) => n + p.amount, 0)
+    assert.equal(potSum, 30)
+    for (const pot of end.pots) {
+      assert.equal(pot.eligible.includes('a'), false)
+    }
+    const endStacks = end.players.reduce((n, p) => n + p.stack, 0)
+    assert.equal(endStacks, startTotal)
+  })
+})

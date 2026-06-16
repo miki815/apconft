@@ -7,6 +7,8 @@ import { useVaultBalance } from '../vault/useVaultBalance'
 import { CardRow, PlayingCard } from './PlayingCard'
 import { RebuyGraceBar } from './RebuyGraceBar'
 import { ShowdownBar } from './ShowdownBar'
+import { PotBreakdown } from './PotBreakdown'
+import { computeDisplayPots } from './pots'
 import { isShowdownPhase, SHOWDOWN_MS } from './showdown'
 import { cardLabel, preflightSitMessage, shortPk, usePokerWs } from './ws'
 
@@ -65,10 +67,16 @@ export function PokerPlay() {
       .catch(() => setIdl(null))
   }, [])
 
-  const potTotal = useMemo(() => {
-    if (!table) return 0
-    return table.state.players.reduce((n, p) => n + p.betThisHand, 0)
-  }, [table])
+  const potDisplay = useMemo(() => {
+    if (!table) {
+      return { total: 0, showBreakdown: false, pots: [] }
+    }
+    return computeDisplayPots(
+      table.state,
+      playerId,
+      table.handInProgress,
+    )
+  }, [table, playerId])
 
   const seatedCount = table?.seats.filter(Boolean).length ?? 0
   const eligibleCount =
@@ -417,9 +425,11 @@ export function PokerPlay() {
       </div>
 
       <section
-        className={`poker-table-section panel panel--flush ${showdownPhase ? 'panel--showdown' : ''}`}
+        className={`poker-table-section panel panel--flush ${showdownPhase ? 'panel--showdown' : ''}${potDisplay.showBreakdown ? ' poker-table-section--pot-breakdown' : ''}`}
       >
-        <div className="poker-table-wrap">
+        <div
+          className={`poker-table-wrap${potDisplay.showBreakdown ? ' poker-table-wrap--pot-breakdown' : ''}`}
+        >
           <div
             className={`table-visual table-visual--poker ${showdownPhase ? 'table-visual--showdown' : ''}`}
           >
@@ -463,7 +473,7 @@ export function PokerPlay() {
                   />
                 </svg>
                 </span>
-                <span className="pot-amount">{potTotal}</span>
+                <span className="pot-amount">{potDisplay.total}</span>
               </div>
             </div>
 
@@ -541,6 +551,9 @@ export function PokerPlay() {
               </div>
             ) : null}
           </div>
+          {potDisplay.showBreakdown ? (
+            <PotBreakdown pots={potDisplay.pots} />
+          ) : null}
         </div>
 
         <div className="hero-bar">

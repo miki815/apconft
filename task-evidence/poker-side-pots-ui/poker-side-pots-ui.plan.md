@@ -97,6 +97,7 @@ Potrebno je **frontend-only** rešenje koje ne menja poker engine, WS protokol n
 | [`solana/web/src/poker/PotBreakdown.tsx`](../../solana/web/src/poker/PotBreakdown.tsx) | **Novo** — kompaktan breakdown JSX |
 | [`solana/web/src/poker/PokerPlay.tsx`](../../solana/web/src/poker/PokerPlay.tsx) | `computeDisplayPots`; `PotBreakdown` sibling ispod `.table-visual`; conditional CSS hook klase |
 | [`solana/web/src/index.css`](../../solana/web/src/index.css) | `.pot-breakdown*` stilovi; layout/clearance; hero label/spacing (Poker tab only) |
+| [`poker/src/pot-port-sync.test.ts`](../../poker/src/pot-port-sync.test.ts) | **Novo (test-only)** — contract test backend vs frontend `buildPots`; ne menja runtime |
 
 ### DOM struktura (final)
 
@@ -197,6 +198,7 @@ solana/web/src/poker/pots.ts
 solana/web/src/poker/PotBreakdown.tsx
 solana/web/src/poker/PokerPlay.tsx
 solana/web/src/index.css
+poker/src/pot-port-sync.test.ts          # test-only dodatak (buildPots drift check)
 task-evidence/poker-side-pots-ui/*
 ```
 
@@ -204,12 +206,14 @@ task-evidence/poker-side-pots-ui/*
 
 | Oblast | Status |
 |--------|--------|
-| Backend poker engine (`poker/src/`) | **Netaknut** |
+| Backend poker runtime / engine logic (`poker/src/pot.ts`, `table.ts`, …) | **Netaknut** |
+| Backend test-only file | **Dodat** [`poker/src/pot-port-sync.test.ts`](../../poker/src/pot-port-sync.test.ts) — contract test, bez runtime promene |
+| `poker/package.json` | **Netaknut** — standardni `npm run poker:test` ne uključuje sync test |
 | Poker server (`poker/server/`) | **Netaknut** |
 | WS contract / poruke | **Netaknut** |
 | Vault flow (`solana/web/src/vault/`) | **Netaknut** |
 | `.env`, `.env.example` | **Netaknut** |
-| `package.json`, `package-lock.json` | **Netaknut** |
+| Root / web `package.json`, `package-lock.json` | **Netaknut** |
 
 ---
 
@@ -237,13 +241,46 @@ npm run poker:test
 
 Retry: **nije potreban** — prvi run prošao bez greške.
 
-Napomena: poker testovi pokrivaju backend engine/room; ovaj task ih nije menjao — služe kao regresiona potvrda da frontend-only diff nije slučajno dirnuo backend (nije dirnut).
+Napomena: standardni `npm run poker:test` pokriva backend engine/room; **engine runtime nije menjan** u ovom task-u. Evidence log [`poker-test-pass-77-of-77.log`](poker-test-pass-77-of-77.log) ostaje za standardni test run (77/77, **bez** sync testa).
+
+**Additional sync check** (posebna komanda, vidi ispod): `build-pots-sync-test-pass-3-of-3.log` — 3/3 pass.
+
+### Additional sync check: backend/frontend buildPots
+
+Dodat je namenski contract test:
+
+`poker/src/pot-port-sync.test.ts`
+
+Test poredi backend `buildPots` iz `poker/src/pot.ts` i frontend port iz `solana/web/src/poker/pots.ts` na istim fixture-ima.
+
+Cilj:
+
+- ako se backend `buildPots` promeni u budućnosti
+- a frontend port se ne ažurira
+- ovaj namenski test treba da pukne
+
+Napomena:
+
+- test **nije** dodat u standardni `npm run poker:test`
+- `poker/package.json` **nije** menjan
+- test se pokreće posebnom komandom (iz `poker/` foldera):
+
+```bash
+cd poker && node --import tsx --test src/pot-port-sync.test.ts
+```
+
+- runtime logika **nije** menjana
+
+| Check | Datum | Rezultat | Evidence |
+|-------|-------|----------|----------|
+| buildPots sync | 2026-06-16 | **3/3 pass**, 0 fail | [`build-pots-sync-test-pass-3-of-3.log`](build-pots-sync-test-pass-3-of-3.log) |
 
 ---
 
 ## Final checklist
 
-- [x] Frontend-only scope — nema backend/WS/vault/env/package izmena
+- [x] Frontend side-pot UI scope — nema backend runtime / WS / vault / env / package izmena
+- [x] Backend test-only dodatak — `poker/src/pot-port-sync.test.ts` (drift check; `poker/package.json` netaknut)
 - [x] Stable-state gate — breakdown samo kad nema otvorene akcije (ili showdown complete)
 - [x] Open betting — samo total
 - [x] Showdown — server `state.pots`
@@ -253,7 +290,8 @@ Napomena: poker testovi pokrivaju backend engine/room; ovaj task ih nije menjao 
 - [x] Clearance donjeg seat/reveal (`margin-top` samo na `--pot-breakdown`)
 - [x] „Tvoje karte“ spacing/label poboljšanje (namerno, Poker tab)
 - [x] `npm run build --prefix solana/web` — PASS (evidence log)
-- [x] `npm run poker:test` — 77/77 PASS (evidence log)
+- [x] `npm run poker:test` — 77/77 PASS (standardni run; evidence log bez sync testa)
+- [x] buildPots sync check — 3/3 PASS ([`build-pots-sync-test-pass-3-of-3.log`](build-pots-sync-test-pass-3-of-3.log); komanda: `cd poker && node --import tsx --test src/pot-port-sync.test.ts`)
 - [x] Manual QA — side-pot scenariji PASS (vidi tabelu)
 - [x] Known unrelated backend bug dokumentovan (4-player stall)
 - [x] Vault tab smoke — PASS (ručna provera: otvaranje, bez crash/error-a, povratak na Poker)

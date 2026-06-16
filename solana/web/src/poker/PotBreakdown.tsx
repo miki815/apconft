@@ -9,11 +9,12 @@ export function PotBreakdown({ pots }: PotBreakdownProps) {
 
   return (
     <div className="pot-breakdown" aria-label="Side pot breakdown">
-      {pots.map((pot) => (
+      {pots.map((pot, index) => (
         <div
           key={pot.key}
           className={[
             'pot-breakdown-row',
+            index === 0 ? 'pot-breakdown-row--main' : '',
             pot.isEligibleForMe ? 'pot-breakdown-row--mine' : '',
           ]
             .filter(Boolean)

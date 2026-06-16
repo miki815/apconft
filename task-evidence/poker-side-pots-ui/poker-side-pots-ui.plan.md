@@ -6,7 +6,7 @@
 
 Branch: `feature/poker-side-pots-ui`.
 
-Poslednja verifikacija: 2026-06-16 (final acceptance workflow — plan osvežen posle layout/styling QA iteracija).
+Poslednja verifikacija: 2026-06-16 (final acceptance — visual polish side-pot breakdown + evidence osvežen).
 
 ---
 
@@ -87,6 +87,35 @@ Potrebno je **frontend-only** rešenje koje ne menja poker engine, WS protokol n
 | „Tvoje karte“ | Namerno poboljšanje: `.hero-hand-label` kontrast + `.hero-bar` / showdown spacing |
 | Sto / seat / karte | **Netaknuti** u diff-u (felt, rail, seat-wrap, playing-card) |
 
+### Visual polish — side-pot breakdown (2026-06-16, final)
+
+Minimalni CSS + JSX polish **bez promene logike** (`computeDisplayPots`, stable gate, eligible format netaknut).
+
+#### `PotBreakdown.tsx`
+
+| Promena | Detalj |
+|---------|--------|
+| `pots.map((pot, index) => …)` | Dodat `index` u map |
+| `pot-breakdown-row--main` | Prvi red (`index === 0`) — **Glavni pot** |
+| `pot-breakdown-row--mine` | Ostaje kad je moj igrač eligible za taj pot |
+| Eligible tekst | Ostaje `seatLabels.join(' · ')` — **nema** pill/badge tagova |
+| Logika | **Nije menjana** |
+
+#### `index.css`
+
+| Promena | Detalj |
+|---------|--------|
+| Chip marker | CSS-only zlatni disk preko `.pot-breakdown-label::before` (radial gradient + prsten); **nema SVG** |
+| Glavni pot | `.pot-breakdown-row--main` — jači border/pozadina, label `#a8b8cc` / `font-weight: 700`, disk malo veći |
+| Side potovi | Mirniji default red (tanji border, tamnija pozadina, label `#8fa3bb`) |
+| My eligible | `.pot-breakdown-row--mine` — suptilan plavi `border-left`, glow/box-shadow **samo na redu** |
+| Main + mine | `.pot-breakdown-row--main.pot-breakdown-row--mine` — kombinovani stil |
+| Eligible linija | Ostaje neutralna/siva (`#6f849c` / `#8fa3bb`) — **ne plavi se** unutar `--mine` reda |
+| Amount | Ostaje `var(--gold)` |
+| Mobile | `@media (max-width: 540px)` — disk 1px manji (6px / 7px na main) |
+
+**Nije dirano:** layout stola, seat-wrap, karte, hero bar pozicioniranje (samo breakdown redovi).
+
 ---
 
 ## Implementation summary
@@ -94,9 +123,9 @@ Potrebno je **frontend-only** rešenje koje ne menja poker engine, WS protokol n
 | Fajl | Izmena |
 |------|--------|
 | [`solana/web/src/poker/pots.ts`](../../solana/web/src/poker/pots.ts) | **Novo** — `buildPots`, `isPotBreakdownStable`, `computeDisplayPots`, labele |
-| [`solana/web/src/poker/PotBreakdown.tsx`](../../solana/web/src/poker/PotBreakdown.tsx) | **Novo** — kompaktan breakdown JSX |
+| [`solana/web/src/poker/PotBreakdown.tsx`](../../solana/web/src/poker/PotBreakdown.tsx) | Breakdown JSX; visual polish: `--main` klasa, eligible tekst |
 | [`solana/web/src/poker/PokerPlay.tsx`](../../solana/web/src/poker/PokerPlay.tsx) | `computeDisplayPots`; `PotBreakdown` sibling ispod `.table-visual`; conditional CSS hook klase |
-| [`solana/web/src/index.css`](../../solana/web/src/index.css) | `.pot-breakdown*` stilovi; layout/clearance; hero label/spacing (Poker tab only) |
+| [`solana/web/src/index.css`](../../solana/web/src/index.css) | `.pot-breakdown*` stilovi; layout/clearance; hero label/spacing; **visual polish** (chip disk, hijerarhija, `--mine`) |
 | [`poker/src/pot-port-sync.test.ts`](../../poker/src/pot-port-sync.test.ts) | **Novo (test-only)** — contract test backend vs frontend `buildPots`; ne menja runtime |
 
 ### DOM struktura (final)
@@ -138,22 +167,22 @@ Potrebno je **frontend-only** rešenje koje ne menja poker engine, WS protokol n
 
 ## Manual QA
 
-Manual QA izvršen tokom razvoja i layout iteracija (2026-06-13 — 2026-06-16). Finalni vizuelni retest posle clearance tweak-a.
+Manual QA izvršen tokom razvoja i layout iteracija (2026-06-13 — 2026-06-16). Finalni vizuelni retest posle side-pot **visual polish** (chip disk, `--main` / `--mine` hijerarhija).
 
 | Scenario | Rezultat | Napomena |
 |----------|----------|----------|
-| **HU / single-pot showdown** | **PASS** | Nema breakdown-a; nema praznog prostora; „Tvoje karte“ jasno vidljivo |
-| **3-player side-pot — desktop** | **PASS** | Breakdown ispod stola; `Glavni pot` / `Side pot 1`; `Mesto N` čitljivo; ne preklapa board/seat/reveal |
-| **3-player side-pot — mobile** | **PASS** | Isti princip; čitljiv dark/blue breakdown |
-| **4-player / Side pot 2 — desktop** | **PASS** | `Glavni pot` / `Side pot 1` / `Side pot 2`; zbir = total; donji reveal ne preklapa breakdown |
-| **4-player / Side pot 2 — mobile** | **PASS** | Prihvatljiv clearance posle `margin-top` tweak-a |
-| **Final visual QA** | **PASS** | HU + 3p + 4p desktop/mobile; bottom seat/reveal ne preklapa breakdown; „Tvoje karte“ vidljivo |
-| **Open betting round** | **PASS** (gate) | Dok postoji otvorena akcija — samo total; breakdown tek u stable state-u |
-| **Showdown** | **PASS** | Server `state.pots`; winner banner vidljiv; breakdown ne preklapa showdown/reveal |
-| **Folded eligibility** | **PASS** | Folded nije u eligible listi; matched folded chips u amount-u |
-| **Sit during active hand** | **PASS** | Novi igrač čeka sledeću ruku — očekivano ponašanje |
-| **Stand** | **NOT VERIFIED** | UI ne dozvoljava / ne završava ustajanje — postojeći unrelated issue, ne side-pot regresija |
-| **Vault tab smoke** | **PASS** | Tab se otvara normalno; nema white screen/crash; nema novog error-a; povratak na Poker tab radi |
+| **HU / single-pot** | **PASS** | Nema breakdown-a; nema praznog prostora |
+| **3-player side-pot** | **PASS** | Breakdown ispod stola; disk + hijerarhija; eligible tekst `Mesto N · …` |
+| **4-player / Side pot 2** | **PASS** | `Glavni pot` / `Side pot 1` / `Side pot 2`; zbir = total |
+| **My eligible red** | **PASS** | Plavi accent na **redu**; eligible linija ostaje siva |
+| **Open betting gate** | **PASS** | Dok postoji otvorena akcija — samo total |
+| **Mobile ~540px** | **PASS** | Čitljiv breakdown; disk 1px manji; scroll OK za 3+ reda |
+| **Sto / hero** | **PASS** | Seat/karte/„Tvoje karte“ bez regresije layout-a |
+| **Showdown** | **PASS** | Server `state.pots`; winner banner vidljiv |
+| **Folded eligibility** | **PASS** | Folded nije u eligible listi |
+| **Sit during active hand** | **PASS** | Novi igrač čeka sledeću ruku |
+| **Stand** | **NOT VERIFIED** | Postojeći unrelated issue |
+| **Vault tab smoke** | **PASS** | Tab radi; povratak na Poker OK |
 
 ---
 
@@ -183,7 +212,35 @@ Manual QA izvršen tokom razvoja i layout iteracija (2026-06-13 — 2026-06-16).
 fix(poker): showdown after locked runout deals river in endBettingRound
 ```
 
-### 2. Stand flow (frontend/backend)
+### 2. 3-player short-stack all-in postflop stall (backend)
+
+**Klasifikacija:** postojeći backend engine bug na **`main`** — **nije** side-pot UI regresija, **nije** blocker za ovaj MR.
+
+**Git / poreklo (Cursor provera, 2026-06-16):**
+
+- Bug postoji na `main`; **nije** uveden u `feature/poker-uncalled-bet-refund` ni `feature/poker-side-pots-ui`
+- `feature/poker-side-pots-ui` ne menja backend runtime (`table.ts` identičan `main`-u)
+- Root cause: `poker/src/table.ts` — `firstPostflopActionSeat()` / `seatsInHandCount()` / `seatedWithChips()` (all-in igrač sa `stack === 0` ispada iz broja → engine pogrešno tretira 3-way kao HU → `actionSeat` na all-in button igraču)
+
+**Repro:**
+
+- A = 100, B = 50, C = 100
+- B All-in 50 → C Call 50 → A Call 50
+
+**Observed:**
+
+- Flop se podeli (`board.length === 3`)
+- `actionSeat` postane **B** (all-in, `stack === 0`)
+- A i C imaju stack, ali ne dobiju hero dugmad
+- Hand ostaje incomplete; nema showdown/winner
+
+**Predlog follow-up task-a:**
+
+```text
+fix(poker): postflop action seat when all-in player excluded from seatsInHandCount
+```
+
+### 3. Stand flow (frontend/backend)
 
 UI trenutno ne dozvoljava / ne završava ustajanje u testiranom scenariju — **NOT VERIFIED**; tretira se kao postojeći unrelated issue.
 
@@ -227,7 +284,8 @@ npm run build --prefix solana/web
 
 | Datum | Rezultat | Evidence |
 |-------|----------|----------|
-| 2026-06-16 | **PASS** — `✓ built in 15.98s` | [`frontend-build-pass.log`](frontend-build-pass.log) |
+| 2026-06-16 (initial) | **PASS** — `✓ built in 15.98s` | [`frontend-build-pass.log`](frontend-build-pass.log) |
+| 2026-06-16 (visual polish final) | **PASS** — `✓ built in 10.93s` | [`frontend-build-pass-sidepot-visual-polish-final.log`](frontend-build-pass-sidepot-visual-polish-final.log) |
 
 ### Poker unit tests
 
@@ -285,15 +343,16 @@ cd poker && node --import tsx --test src/pot-port-sync.test.ts
 - [x] Open betting — samo total
 - [x] Showdown — server `state.pots`
 - [x] Labele `Glavni pot`, `Side pot N`, `Mesto N`
-- [x] Breakdown ispod stola, dark/blue final styling
+- [x] Breakdown ispod stola, dark/blue styling + **visual polish** (chip disk, `--main` / `--mine`)
+- [x] Visual polish manual QA — PASS (HU, 3p, 4p, my eligible, open betting, mobile ~540px, sto/hero)
 - [x] Single-pot bez breakdown-a i bez praznog prostora
 - [x] Clearance donjeg seat/reveal (`margin-top` samo na `--pot-breakdown`)
 - [x] „Tvoje karte“ spacing/label poboljšanje (namerno, Poker tab)
-- [x] `npm run build --prefix solana/web` — PASS (evidence log)
+- [x] `npm run build --prefix solana/web` — PASS (initial + visual polish final evidence logs)
 - [x] `npm run poker:test` — 77/77 PASS (standardni run; evidence log bez sync testa)
 - [x] buildPots sync check — 3/3 PASS ([`build-pots-sync-test-pass-3-of-3.log`](build-pots-sync-test-pass-3-of-3.log); komanda: `cd poker && node --import tsx --test src/pot-port-sync.test.ts`)
 - [x] Manual QA — side-pot scenariji PASS (vidi tabelu)
-- [x] Known unrelated backend bug dokumentovan (4-player stall)
+- [x] Known unrelated backend bug dokumentovan (4-player stall, 3-player postflop stall)
 - [x] Vault tab smoke — PASS (ručna provera: otvaranje, bez crash/error-a, povratak na Poker)
 - [ ] Stand flow — **NOT VERIFIED** (postojeći issue, van scope-a)
 
@@ -304,7 +363,8 @@ cd poker && node --import tsx --test src/pot-port-sync.test.ts
 Task je **spreman za MR** sa napomenom:
 
 1. **Stand** — poznat unrelated issue; ne blokira side-pot UI MR.
-2. **4-player stall** — dokumentovan backend follow-up; ne blokira ovaj frontend MR.
+2. **4-player locked-runout stall** — dokumentovan backend follow-up; ne blokira ovaj frontend MR.
+3. **3-player postflop stall** — potvrđen postojeći bug na `main`; otkriven tokom side-pot QA; **nije regression**; ne blokira MR.
 
 Predlog MR title:
 

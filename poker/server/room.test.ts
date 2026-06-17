@@ -175,6 +175,10 @@ async function bustLoserAllIn(room: PokerRoom, loserId: string) {
   }
 }
 
+function roomReleasableStack(room: PokerRoom, playerId: string): number {
+  return room.youState(playerId).releasableStack
+}
+
 function finishHandByFold(room: PokerRoom) {
   const state = room.snapshot().state!
   const first = state.players.find((p) => p.seat === state.actionSeat)!
@@ -856,6 +860,72 @@ describe('PokerRoom add chips', () => {
     const c = snap.state!.players.find((p) => p.id === 'c')
     assert.ok(c)
     assert.ok(c!.stack >= 400 - 20)
+  })
+})
+
+describe('PokerRoom releasableStack stand', () => {
+  it('T1: waiting sit + add-chips during hand + stand includes pendingStackAdd', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    assert.equal(room.snapshot().handInProgress, true)
+
+    assert.equal(await room.sit('c', 2, 300), null)
+    assert.deepEqual(await room.addChips('c', 100), {
+      appliesFromNextHand: true,
+    })
+    assert.equal(roomSeats(room)[2]?.pendingStackAdd, 100)
+    assert.equal(roomSeats(room)[2]?.stack, 300)
+
+    assert.equal(roomReleasableStack(room, 'c'), 400)
+    assert.equal(await room.stand('c'), null)
+    assert.equal(room.snapshot().seats[2], null)
+  })
+
+  it('T2: stand without pending uses stack only', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    assert.equal(room.snapshot().handInProgress, false)
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 0)
+    assert.equal(roomReleasableStack(room, 'a'), 500)
+    assert.equal(await room.stand('a'), null)
+    assert.equal(room.snapshot().seats[0], null)
+  })
+
+  it('T3: add-chips between hands then releasable equals stack', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    assert.equal(room.snapshot().handInProgress, false)
+
+    assert.deepEqual(await room.addChips('a', 100), {
+      appliesFromNextHand: false,
+    })
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 0)
+    assert.equal(roomSeats(room)[0]?.stack, 600)
+    assert.equal(roomReleasableStack(room, 'a'), 600)
+    assert.equal(await room.stand('a'), null)
+  })
+
+  it('T4: HU winner releasableStack after all-in can exceed buy-in', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    const end = await allInAndFinish(room)
+    const winner = end.seats.find((s) => s && s.stack > 500)
+    assert.ok(winner)
+    assert.ok(winner!.stack > 500)
+    assert.equal(roomReleasableStack(room, winner!.playerId), winner!.stack)
+  })
+
+  it('T5: busted loser releasableStack is zero', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    const end = await allInAndFinish(room)
+    const busted = end.seats.find((s) => s && s.stack === 0)
+    assert.ok(busted)
+    assert.equal(roomReleasableStack(room, busted!.playerId), 0)
+    assert.equal(await room.stand(busted!.playerId), null)
   })
 })
 

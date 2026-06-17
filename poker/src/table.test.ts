@@ -345,6 +345,52 @@ describe('HoldemTable locked runout', () => {
     assert.equal(endTotal, startTotal)
   })
 
+  it('turn-close locked runout deals river and completes showdown', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'A', seat: 0, stack: 500 },
+        { id: 'B', seat: 1, stack: 200 },
+        { id: 'C', seat: 2, stack: 200 },
+        { id: 'D', seat: 3, stack: 200 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 0,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    driveCheapPreflop(table)
+    for (let i = 0; i < 60; i++) {
+      const s = table.getState()
+      if (s.bettingRound !== 'flop' || s.handComplete || s.actionSeat === null) break
+      const actor = s.players.find((p) => p.seat === s.actionSeat)!
+      const toCall = s.currentBet - actor.betThisRound
+      if (toCall > 0) act(table, actor.id, { type: 'call' })
+      else act(table, actor.id, { type: 'check' })
+    }
+    const turnStart = table.getState()
+    assert.equal(turnStart.bettingRound, 'turn')
+    assert.equal(turnStart.board.length, 4)
+    for (let i = 0; i < 60; i++) {
+      const s = table.getState()
+      if (s.bettingRound !== 'turn' || s.handComplete || s.actionSeat === null) break
+      const actor = s.players.find((p) => p.seat === s.actionSeat)!
+      if (actor.id === 'B') act(table, 'B', { type: 'fold' })
+      else if (actor.id === 'C' || actor.id === 'D') act(table, actor.id, { type: 'all-in' })
+      else if (actor.id === 'A') {
+        const toCall = s.currentBet - actor.betThisRound
+        if (toCall > 0) act(table, 'A', { type: 'call' })
+        else act(table, 'A', { type: 'check' })
+      }
+    }
+    const end = table.getState()
+    assert.equal(end.board.length, 5)
+    assert.equal(end.handComplete, true)
+    assert.equal(end.bettingRound, 'showdown')
+    assert.ok(end.winners.length >= 1)
+    assert.equal(table.isRunoutPending(), false)
+  })
+
   it('advanceRunout fails when no runout pending', () => {
     const table = new HoldemTable({
       players: [

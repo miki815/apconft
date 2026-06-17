@@ -41,7 +41,7 @@ export function PokerPlay() {
     sitAndWait,
     checkAddChips,
     addChipsAndWait,
-    stand,
+    standAndWait,
     startHand,
     act,
   } = usePokerWs(playerId)
@@ -50,6 +50,9 @@ export function PokerPlay() {
   const [buyIn, setBuyIn] = useState('200')
   const [busy, setBusy] = useState(false)
   const [txMsg, setTxMsg] = useState<string | null>(null)
+  const [pendingStandReleaseTx, setPendingStandReleaseTx] = useState<
+    string | null
+  >(null)
   const [idl, setIdl] = useState<Idl | null>(null)
   const {
     chips: vaultChips,
@@ -156,7 +159,18 @@ export function PokerPlay() {
     return table.seats[mySeat]?.stack ?? 0
   }, [table, mySeat])
 
+  const releasableStack =
+    table?.you.releasableStack !== undefined
+      ? table.you.releasableStack
+      : myStack
+
   const inRebuyGrace = rebuyDeadlineAt !== null && myStack <= 0
+
+  useEffect(() => {
+    if (mySeat === null) {
+      setPendingStandReleaseTx(null)
+    }
+  }, [mySeat])
 
   useEffect(() => {
     const cap = mySeat !== null ? maxAddChips : maxBuyIn
@@ -383,8 +397,8 @@ export function PokerPlay() {
     setBusy(true)
     setTxMsg(null)
     try {
-      let releaseTx: string | undefined
-      if (!SKIP_VAULT && idl && mintPk && myStack > 0) {
+      let releaseTx = pendingStandReleaseTx ?? undefined
+      if (!releaseTx && !SKIP_VAULT && idl && mintPk && releasableStack > 0) {
         setTxMsg('Potpiši release u novčaniku…')
         releaseTx = await releaseFromTable(
           connection,
@@ -392,10 +406,25 @@ export function PokerPlay() {
           programId,
           mintPk,
           idl,
-          myStack,
+          releasableStack,
         )
       }
-      stand(releaseTx)
+      if (releaseTx) {
+        setPendingStandReleaseTx(releaseTx)
+      }
+      setTxMsg('Čekamo potvrdu servera da je mesto oslobođeno…')
+      const standErr = await standAndWait(releaseTx)
+      if (standErr) {
+        void refreshVault()
+        setTxMsg(
+          releaseTx
+            ? `${standErr}. Release je već potpisan; klikni Stand ponovo da pošalješ isti release TX bez novog potpisa.`
+            : standErr,
+        )
+        return
+      }
+      setPendingStandReleaseTx(null)
+      setTxMsg('Mesto oslobođeno.')
       void refreshVault()
     } catch (e) {
       setTxMsg(e instanceof Error ? e.message : String(e))

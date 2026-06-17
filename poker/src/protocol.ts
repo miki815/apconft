@@ -48,6 +48,8 @@ export interface YouState {
   toCall: number
   /** Unix ms when rebuy grace ends; null if not in grace */
   rebuyDeadlineAt: number | null
+  /** Chips releasable on stand (stack + pending add-chips not yet in stack) */
+  releasableStack: number
 }
 
 export const DEFAULT_TABLE_ID = 'main'

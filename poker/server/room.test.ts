@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import anchor, { BorshInstructionCoder, type Idl } from '@coral-xyz/anchor'
+import { MINT_SIZE, MintLayout, TOKEN_PROGRAM_ID } from '@solana/spl-token'
+import {
+  Keypair,
+  PublicKey,
+  type VersionedTransactionResponse,
+} from '@solana/web3.js'
+import { TABLE_VAULT_PROGRAM_ID } from './config.js'
 import { PokerRoom, SHOWDOWN_MS } from './room.js'
+import { verifyTableVaultTx, type TableVaultIx } from './vaultTx.js'
+import { loadVaultIdl } from './vaultBalance.js'
 
 process.env.POKER_SKIP_VAULT_CHECK = '1'
 
@@ -191,6 +201,75 @@ function finishHandByFold(room: PokerRoom) {
   }
 }
 
+function mintAccountInfo(decimals = 0) {
+  const data = Buffer.alloc(MINT_SIZE)
+  MintLayout.encode(
+    {
+      mintAuthorityOption: 0,
+      mintAuthority: PublicKey.default,
+      supply: 0n,
+      decimals,
+      isInitialized: true,
+      freezeAuthorityOption: 0,
+      freezeAuthority: PublicKey.default,
+    },
+    data,
+  )
+  return {
+    data,
+    executable: false,
+    lamports: 0,
+    owner: TOKEN_PROGRAM_ID,
+    rentEpoch: 0,
+  }
+}
+
+function tableVaultTxResponse(
+  idl: Idl,
+  user: PublicKey,
+  mint: PublicKey,
+  instruction: TableVaultIx,
+  amount: number,
+): VersionedTransactionResponse {
+  const coder = new BorshInstructionCoder(idl)
+  const data = coder.encode(instruction, { amount: new anchor.BN(amount) })
+  const staticAccountKeys = [user, mint, TABLE_VAULT_PROGRAM_ID]
+  const accountKeys = {
+    staticAccountKeys,
+    get: (index: number) => staticAccountKeys[index],
+  }
+  const message = {
+    compiledInstructions: [
+      {
+        programIdIndex: 2,
+        data,
+        accountKeyIndexes: [0, 1],
+      },
+    ],
+    getAccountKeys: () => accountKeys,
+    isAccountSigner: (index: number) => index === 0,
+  }
+
+  return {
+    meta: { err: null, innerInstructions: [] },
+    transaction: { message },
+  } as unknown as VersionedTransactionResponse
+}
+
+function retryConnection(responses: (VersionedTransactionResponse | null)[]) {
+  let getTransactionCalls = 0
+  return {
+    connection: {
+      getTransaction: async () => {
+        getTransactionCalls++
+        return responses.shift() ?? null
+      },
+      getAccountInfo: async () => mintAccountInfo(0),
+    },
+    calls: () => getTransactionCalls,
+  }
+}
+
 async function playToFlop(room: PokerRoom) {
   for (let i = 0; i < 60; i++) {
     const st = room.snapshot().state
@@ -203,6 +282,47 @@ async function playToFlop(room: PokerRoom) {
   }
   return room.snapshot().state
 }
+
+describe('verifyTableVaultTx retry', () => {
+  it('passes when a fresh transaction appears on retry', async () => {
+    const idl = loadVaultIdl()
+    assert.ok(idl)
+    const user = Keypair.generate().publicKey
+    const mint = Keypair.generate().publicKey
+    const tx = tableVaultTxResponse(idl, user, mint, 'lock_for_table', 10)
+    const rpc = retryConnection([null, tx])
+
+    const err = await verifyTableVaultTx(
+      rpc.connection as never,
+      'fresh-lock-signature',
+      user,
+      mint,
+      'lock_for_table',
+      10,
+    )
+
+    assert.equal(err, null)
+    assert.equal(rpc.calls(), 2)
+  })
+
+  it('returns not found after all retry attempts are exhausted', async () => {
+    const user = Keypair.generate().publicKey
+    const mint = Keypair.generate().publicKey
+    const rpc = retryConnection([null, null, null, null])
+
+    const err = await verifyTableVaultTx(
+      rpc.connection as never,
+      'missing-lock-signature',
+      user,
+      mint,
+      'lock_for_table',
+      10,
+    )
+
+    assert.equal(err, 'Transaction not found or not confirmed')
+    assert.equal(rpc.calls(), 4)
+  })
+})
 
 describe('PokerRoom', () => {
   it('sit, start hand, fold wins', async () => {

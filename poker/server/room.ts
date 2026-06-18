@@ -281,10 +281,10 @@ export class PokerRoom {
     const seat = this.findSeat(playerId)
     if (seat === null) return 'Not seated'
 
-    const stack = this.currentStack(seat, playerId)
+    const releasable = this.releasableStack(seat, playerId)
     const vaultRequired = !isSkipVaultCheck() && this.tableMint !== null
 
-    if (vaultRequired && stack > 0) {
+    if (vaultRequired && releasable > 0) {
       let pubkey: PublicKey
       try {
         pubkey = new PublicKey(playerId)
@@ -295,8 +295,6 @@ export class PokerRoom {
       if (!releaseTx) {
         return 'Missing release transaction — sign release_from_table in wallet first'
       }
-      const replay = this.consumeVaultTx(releaseTx)
-      if (replay) return replay
 
       const verifyErr = await verifyTableVaultTx(
         this.vaultConnection,
@@ -304,9 +302,12 @@ export class PokerRoom {
         pubkey,
         this.tableMint!,
         'release_from_table',
-        stack,
+        releasable,
       )
       if (verifyErr) return verifyErr
+
+      const replay = this.consumeVaultTx(releaseTx)
+      if (replay) return replay
     }
 
     this.clearRebuyGrace(seat)
@@ -404,7 +405,10 @@ export class PokerRoom {
       }
     }
 
-    return { seat, holeCards, canAct, toCall, rebuyDeadlineAt }
+    const releasableStack =
+      seat !== null ? this.releasableStack(seat, playerId) : 0
+
+    return { seat, holeCards, canAct, toCall, rebuyDeadlineAt, releasableStack }
   }
 
   private countEligibleForHand(): number {
@@ -452,6 +456,12 @@ export class PokerRoom {
       if (live) return live.stack
     }
     return this.seats[seat]?.stack ?? 0
+  }
+
+  private releasableStack(seat: number, playerId: string): number {
+    const base = this.currentStack(seat, playerId)
+    const pending = this.seats[seat]?.pendingStackAdd ?? 0
+    return base + pending
   }
 
   private clearRunoutTimer() {

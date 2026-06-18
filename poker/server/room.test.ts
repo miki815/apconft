@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import anchor, { BorshInstructionCoder, type Idl } from '@coral-xyz/anchor'
+import { MINT_SIZE, MintLayout, TOKEN_PROGRAM_ID } from '@solana/spl-token'
+import {
+  Keypair,
+  PublicKey,
+  type VersionedTransactionResponse,
+} from '@solana/web3.js'
+import { TABLE_VAULT_PROGRAM_ID } from './config.js'
 import { PokerRoom, SHOWDOWN_MS } from './room.js'
+import { verifyTableVaultTx, type TableVaultIx } from './vaultTx.js'
+import { loadVaultIdl } from './vaultBalance.js'
 
 process.env.POKER_SKIP_VAULT_CHECK = '1'
 
@@ -175,6 +185,10 @@ async function bustLoserAllIn(room: PokerRoom, loserId: string) {
   }
 }
 
+function roomReleasableStack(room: PokerRoom, playerId: string): number {
+  return room.youState(playerId).releasableStack
+}
+
 function finishHandByFold(room: PokerRoom) {
   const state = room.snapshot().state!
   const first = state.players.find((p) => p.seat === state.actionSeat)!
@@ -184,6 +198,75 @@ function finishHandByFold(room: PokerRoom) {
     room.applyAction(second.id, { type: 'fold' })
   } else {
     room.applyAction(first.id, { type: 'fold' })
+  }
+}
+
+function mintAccountInfo(decimals = 0) {
+  const data = Buffer.alloc(MINT_SIZE)
+  MintLayout.encode(
+    {
+      mintAuthorityOption: 0,
+      mintAuthority: PublicKey.default,
+      supply: 0n,
+      decimals,
+      isInitialized: true,
+      freezeAuthorityOption: 0,
+      freezeAuthority: PublicKey.default,
+    },
+    data,
+  )
+  return {
+    data,
+    executable: false,
+    lamports: 0,
+    owner: TOKEN_PROGRAM_ID,
+    rentEpoch: 0,
+  }
+}
+
+function tableVaultTxResponse(
+  idl: Idl,
+  user: PublicKey,
+  mint: PublicKey,
+  instruction: TableVaultIx,
+  amount: number,
+): VersionedTransactionResponse {
+  const coder = new BorshInstructionCoder(idl)
+  const data = coder.encode(instruction, { amount: new anchor.BN(amount) })
+  const staticAccountKeys = [user, mint, TABLE_VAULT_PROGRAM_ID]
+  const accountKeys = {
+    staticAccountKeys,
+    get: (index: number) => staticAccountKeys[index],
+  }
+  const message = {
+    compiledInstructions: [
+      {
+        programIdIndex: 2,
+        data,
+        accountKeyIndexes: [0, 1],
+      },
+    ],
+    getAccountKeys: () => accountKeys,
+    isAccountSigner: (index: number) => index === 0,
+  }
+
+  return {
+    meta: { err: null, innerInstructions: [] },
+    transaction: { message },
+  } as unknown as VersionedTransactionResponse
+}
+
+function retryConnection(responses: (VersionedTransactionResponse | null)[]) {
+  let getTransactionCalls = 0
+  return {
+    connection: {
+      getTransaction: async () => {
+        getTransactionCalls++
+        return responses.shift() ?? null
+      },
+      getAccountInfo: async () => mintAccountInfo(0),
+    },
+    calls: () => getTransactionCalls,
   }
 }
 
@@ -199,6 +282,47 @@ async function playToFlop(room: PokerRoom) {
   }
   return room.snapshot().state
 }
+
+describe('verifyTableVaultTx retry', () => {
+  it('passes when a fresh transaction appears on retry', async () => {
+    const idl = loadVaultIdl()
+    assert.ok(idl)
+    const user = Keypair.generate().publicKey
+    const mint = Keypair.generate().publicKey
+    const tx = tableVaultTxResponse(idl, user, mint, 'lock_for_table', 10)
+    const rpc = retryConnection([null, tx])
+
+    const err = await verifyTableVaultTx(
+      rpc.connection as never,
+      'fresh-lock-signature',
+      user,
+      mint,
+      'lock_for_table',
+      10,
+    )
+
+    assert.equal(err, null)
+    assert.equal(rpc.calls(), 2)
+  })
+
+  it('returns not found after all retry attempts are exhausted', async () => {
+    const user = Keypair.generate().publicKey
+    const mint = Keypair.generate().publicKey
+    const rpc = retryConnection([null, null, null, null])
+
+    const err = await verifyTableVaultTx(
+      rpc.connection as never,
+      'missing-lock-signature',
+      user,
+      mint,
+      'lock_for_table',
+      10,
+    )
+
+    assert.equal(err, 'Transaction not found or not confirmed')
+    assert.equal(rpc.calls(), 4)
+  })
+})
 
 describe('PokerRoom', () => {
   it('sit, start hand, fold wins', async () => {
@@ -856,6 +980,72 @@ describe('PokerRoom add chips', () => {
     const c = snap.state!.players.find((p) => p.id === 'c')
     assert.ok(c)
     assert.ok(c!.stack >= 400 - 20)
+  })
+})
+
+describe('PokerRoom releasableStack stand', () => {
+  it('T1: waiting sit + add-chips during hand + stand includes pendingStackAdd', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    assert.equal(room.snapshot().handInProgress, true)
+
+    assert.equal(await room.sit('c', 2, 300), null)
+    assert.deepEqual(await room.addChips('c', 100), {
+      appliesFromNextHand: true,
+    })
+    assert.equal(roomSeats(room)[2]?.pendingStackAdd, 100)
+    assert.equal(roomSeats(room)[2]?.stack, 300)
+
+    assert.equal(roomReleasableStack(room, 'c'), 400)
+    assert.equal(await room.stand('c'), null)
+    assert.equal(room.snapshot().seats[2], null)
+  })
+
+  it('T2: stand without pending uses stack only', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    assert.equal(room.snapshot().handInProgress, false)
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 0)
+    assert.equal(roomReleasableStack(room, 'a'), 500)
+    assert.equal(await room.stand('a'), null)
+    assert.equal(room.snapshot().seats[0], null)
+  })
+
+  it('T3: add-chips between hands then releasable equals stack', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    assert.equal(room.snapshot().handInProgress, false)
+
+    assert.deepEqual(await room.addChips('a', 100), {
+      appliesFromNextHand: false,
+    })
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 0)
+    assert.equal(roomSeats(room)[0]?.stack, 600)
+    assert.equal(roomReleasableStack(room, 'a'), 600)
+    assert.equal(await room.stand('a'), null)
+  })
+
+  it('T4: HU winner releasableStack after all-in can exceed buy-in', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    const end = await allInAndFinish(room)
+    const winner = end.seats.find((s) => s && s.stack > 500)
+    assert.ok(winner)
+    assert.ok(winner!.stack > 500)
+    assert.equal(roomReleasableStack(room, winner!.playerId), winner!.stack)
+  })
+
+  it('T5: busted loser releasableStack is zero', async () => {
+    const room = new PokerRoom('test', fastRebuy)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    const end = await allInAndFinish(room)
+    const busted = end.seats.find((s) => s && s.stack === 0)
+    assert.ok(busted)
+    assert.equal(roomReleasableStack(room, busted!.playerId), 0)
+    assert.equal(await room.stand(busted!.playerId), null)
   })
 })
 

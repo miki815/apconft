@@ -371,6 +371,9 @@ export class HoldemTable {
       }
       this.needsAction.clear()
       this.actionSeat = null
+      if (this.board.length === 5 && !this.handComplete) {
+        this.showdown()
+      }
       return
     }
 

@@ -7,6 +7,8 @@ import { useVaultBalance } from '../vault/useVaultBalance'
 import { CardRow, PlayingCard } from './PlayingCard'
 import { RebuyGraceBar } from './RebuyGraceBar'
 import { ShowdownBar } from './ShowdownBar'
+import { PotBreakdown } from './PotBreakdown'
+import { computeDisplayPots } from './pots'
 import { isShowdownPhase, SHOWDOWN_MS } from './showdown'
 import { cardLabel, preflightSitMessage, shortPk, usePokerWs } from './ws'
 
@@ -27,6 +29,14 @@ const SEAT_POS: readonly [number, number][] = [
   [14, 24],
 ]
 
+interface SitRecoveryState {
+  amount: number
+  seat: number
+  lockTx: string
+  sitError: string
+  releaseError: string | null
+}
+
 export function PokerPlay() {
   const wallet = useAnchorWallet()
   const { connection } = useConnection()
@@ -39,7 +49,7 @@ export function PokerPlay() {
     sitAndWait,
     checkAddChips,
     addChipsAndWait,
-    stand,
+    standAndWait,
     startHand,
     act,
   } = usePokerWs(playerId)
@@ -48,6 +58,10 @@ export function PokerPlay() {
   const [buyIn, setBuyIn] = useState('200')
   const [busy, setBusy] = useState(false)
   const [txMsg, setTxMsg] = useState<string | null>(null)
+  const [pendingStandReleaseTx, setPendingStandReleaseTx] = useState<
+    string | null
+  >(null)
+  const [sitRecovery, setSitRecovery] = useState<SitRecoveryState | null>(null)
   const [idl, setIdl] = useState<Idl | null>(null)
   const {
     chips: vaultChips,
@@ -65,10 +79,16 @@ export function PokerPlay() {
       .catch(() => setIdl(null))
   }, [])
 
-  const potTotal = useMemo(() => {
-    if (!table) return 0
-    return table.state.players.reduce((n, p) => n + p.betThisHand, 0)
-  }, [table])
+  const potDisplay = useMemo(() => {
+    if (!table) {
+      return { total: 0, showBreakdown: false, pots: [] }
+    }
+    return computeDisplayPots(
+      table.state,
+      playerId,
+      table.handInProgress,
+    )
+  }, [table, playerId])
 
   const seatedCount = table?.seats.filter(Boolean).length ?? 0
   const eligibleCount =
@@ -148,7 +168,21 @@ export function PokerPlay() {
     return table.seats[mySeat]?.stack ?? 0
   }, [table, mySeat])
 
+  const releasableStack =
+    table?.you.releasableStack !== undefined
+      ? table.you.releasableStack
+      : myStack
+
   const inRebuyGrace = rebuyDeadlineAt !== null && myStack <= 0
+  const sitRecoveryActive = sitRecovery !== null
+
+  useEffect(() => {
+    if (mySeat === null) {
+      setPendingStandReleaseTx(null)
+    } else {
+      setSitRecovery(null)
+    }
+  }, [mySeat])
 
   useEffect(() => {
     const cap = mySeat !== null ? maxAddChips : maxBuyIn
@@ -270,8 +304,17 @@ export function PokerPlay() {
 
   const handleSit = async () => {
     if (!buyInValid || !wallet || !connected) return
+    if (sitRecovery) {
+      setTxMsg(
+        `Prvo vrati zaključani buy-in od ${sitRecovery.amount} čipova preko Recover locked chips.`,
+      )
+      return
+    }
 
-    const localErr = preflightSitMessage(table, pickSeat, chipAmountNum)
+    const seatToSit = pickSeat
+    const buyInToLock = chipAmountNum
+
+    const localErr = preflightSitMessage(table, seatToSit, buyInToLock)
     if (localErr) {
       setTxMsg(localErr)
       return
@@ -280,16 +323,16 @@ export function PokerPlay() {
     setBusy(true)
     setTxMsg(null)
     let locked = false
+    let lockTx: string | undefined
 
     try {
       setTxMsg('Provera mesta…')
-      const preErr = await checkSit(pickSeat, chipAmountNum)
+      const preErr = await checkSit(seatToSit, buyInToLock)
       if (preErr) {
         setTxMsg(preErr)
         return
       }
 
-      let lockTx: string | undefined
       if (!SKIP_VAULT && idl && mintPk) {
         setTxMsg('Potpiši lock u novčaniku…')
         lockTx = await lockForTable(
@@ -298,17 +341,17 @@ export function PokerPlay() {
           programId,
           mintPk,
           idl,
-          chipAmountNum,
+          buyInToLock,
         )
         locked = true
       }
 
       setTxMsg('Sedanje za stolom…')
-      const sitErr = await sitAndWait(pickSeat, chipAmountNum, lockTx)
+      const sitErr = await sitAndWait(seatToSit, buyInToLock, lockTx)
       if (sitErr) {
         if (locked && idl && mintPk) {
           setTxMsg(
-            `${sitErr} — vraćamo ${chipAmountNum} čipova u vault, potpiši u novčaniku…`,
+            `${sitErr} — vraćamo ${buyInToLock} čipova u vault, potpiši u novčaniku…`,
           )
           try {
             await releaseFromTable(
@@ -317,18 +360,26 @@ export function PokerPlay() {
               programId,
               mintPk,
               idl,
-              chipAmountNum,
+              buyInToLock,
             )
+            setSitRecovery(null)
             setTxMsg(
-              `Sedanje nije uspelo (${sitErr}). Buy-in od ${chipAmountNum} čipova vraćen u vault.`,
+              `Sedanje nije uspelo (${sitErr}). Buy-in od ${buyInToLock} čipova vraćen u vault.`,
             )
           } catch (refundErr) {
+            const releaseError =
+              refundErr instanceof Error ? refundErr.message : String(refundErr)
+            setSitRecovery({
+              amount: buyInToLock,
+              seat: seatToSit,
+              lockTx: lockTx ?? '',
+              sitError: sitErr,
+              releaseError,
+            })
             setTxMsg(
-              `Sedanje nije uspelo (${sitErr}). Buy-in od ${chipAmountNum} je zaključan — potpiši release u novčaniku (Vault → isti iznos) ili pokušaj ponovo.`,
+              `Sedanje nije uspelo (${sitErr}). Buy-in od ${buyInToLock} je zaključan — klikni Recover locked chips da pokušaš release bez novog lock-a.`,
             )
-            if (refundErr instanceof Error) {
-              setTxMsg((m) => `${m} (${refundErr.message})`)
-            }
+            setTxMsg((m) => `${m} (${releaseError})`)
           }
         } else {
           setTxMsg(`Sedanje nije uspelo: ${sitErr}`)
@@ -338,9 +389,11 @@ export function PokerPlay() {
       }
 
       setTxMsg(null)
+      setSitRecovery(null)
       void refreshVault()
     } catch (e) {
       if (locked && idl && mintPk) {
+        const sitError = e instanceof Error ? e.message : String(e)
         setTxMsg(
           'Lock je prošao, ali sedanje nije završeno — pokušavamo vraćanje u vault…',
         )
@@ -351,14 +404,24 @@ export function PokerPlay() {
             programId,
             mintPk,
             idl,
-            chipAmountNum,
+            buyInToLock,
           )
+          setSitRecovery(null)
           setTxMsg(
-            `Greška pri sedenju. Buy-in od ${chipAmountNum} čipova vraćen u vault.`,
+            `Greška pri sedenju. Buy-in od ${buyInToLock} čipova vraćen u vault.`,
           )
-        } catch {
+        } catch (refundErr) {
+          const releaseError =
+            refundErr instanceof Error ? refundErr.message : String(refundErr)
+          setSitRecovery({
+            amount: buyInToLock,
+            seat: seatToSit,
+            lockTx: lockTx ?? '',
+            sitError,
+            releaseError,
+          })
           setTxMsg(
-            `Greška: ${e instanceof Error ? e.message : String(e)}. Buy-in od ${chipAmountNum} možda je i dalje zaključan — proveri vault.`,
+            `Greška: ${sitError}. Buy-in od ${buyInToLock} možda je i dalje zaključan — klikni Recover locked chips da pokušaš release bez novog lock-a. (${releaseError})`,
           )
         }
         void refreshVault()
@@ -370,13 +433,53 @@ export function PokerPlay() {
     }
   }
 
+  const handleRecoverLockedChips = async () => {
+    if (!sitRecovery) return
+    if (!wallet || !connected || !idl || !mintPk) {
+      setTxMsg(
+        'Poveži novčanik i sačekaj da se vault program učita pre recover release pokušaja.',
+      )
+      return
+    }
+
+    setBusy(true)
+    setTxMsg(
+      `Recover locked chips: potpiši release za ${sitRecovery.amount} čipova…`,
+    )
+    try {
+      await releaseFromTable(
+        connection,
+        wallet,
+        programId,
+        mintPk,
+        idl,
+        sitRecovery.amount,
+      )
+      setSitRecovery(null)
+      await refreshVault()
+      setTxMsg(
+        `Locked buy-in od ${sitRecovery.amount} čipova vraćen je u vault.`,
+      )
+    } catch (e) {
+      const releaseError = e instanceof Error ? e.message : String(e)
+      setSitRecovery((current) =>
+        current ? { ...current, releaseError } : current,
+      )
+      setTxMsg(
+        `Recover release nije uspeo. Zaključani buy-in od ${sitRecovery.amount} ostaje u recovery stanju. (${releaseError})`,
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleStand = async () => {
     if (!wallet || !connected || mySeat === null) return
     setBusy(true)
     setTxMsg(null)
     try {
-      let releaseTx: string | undefined
-      if (!SKIP_VAULT && idl && mintPk && myStack > 0) {
+      let releaseTx = pendingStandReleaseTx ?? undefined
+      if (!releaseTx && !SKIP_VAULT && idl && mintPk && releasableStack > 0) {
         setTxMsg('Potpiši release u novčaniku…')
         releaseTx = await releaseFromTable(
           connection,
@@ -384,10 +487,25 @@ export function PokerPlay() {
           programId,
           mintPk,
           idl,
-          myStack,
+          releasableStack,
         )
       }
-      stand(releaseTx)
+      if (releaseTx) {
+        setPendingStandReleaseTx(releaseTx)
+      }
+      setTxMsg('Čekamo potvrdu servera da je mesto oslobođeno…')
+      const standErr = await standAndWait(releaseTx)
+      if (standErr) {
+        void refreshVault()
+        setTxMsg(
+          releaseTx
+            ? `${standErr}. Release je već potpisan; klikni Stand ponovo da pošalješ isti release TX bez novog potpisa.`
+            : standErr,
+        )
+        return
+      }
+      setPendingStandReleaseTx(null)
+      setTxMsg('Mesto oslobođeno.')
       void refreshVault()
     } catch (e) {
       setTxMsg(e instanceof Error ? e.message : String(e))
@@ -417,9 +535,11 @@ export function PokerPlay() {
       </div>
 
       <section
-        className={`poker-table-section panel panel--flush ${showdownPhase ? 'panel--showdown' : ''}`}
+        className={`poker-table-section panel panel--flush ${showdownPhase ? 'panel--showdown' : ''}${potDisplay.showBreakdown ? ' poker-table-section--pot-breakdown' : ''}`}
       >
-        <div className="poker-table-wrap">
+        <div
+          className={`poker-table-wrap${potDisplay.showBreakdown ? ' poker-table-wrap--pot-breakdown' : ''}`}
+        >
           <div
             className={`table-visual table-visual--poker ${showdownPhase ? 'table-visual--showdown' : ''}`}
           >
@@ -463,7 +583,7 @@ export function PokerPlay() {
                   />
                 </svg>
                 </span>
-                <span className="pot-amount">{potTotal}</span>
+                <span className="pot-amount">{potDisplay.total}</span>
               </div>
             </div>
 
@@ -541,6 +661,9 @@ export function PokerPlay() {
               </div>
             ) : null}
           </div>
+          {potDisplay.showBreakdown ? (
+            <PotBreakdown pots={potDisplay.pots} />
+          ) : null}
         </div>
 
         <div className="hero-bar">
@@ -695,6 +818,24 @@ export function PokerPlay() {
             </button>
           </p>
         )}
+        {sitRecovery ? (
+          <div className="err">
+            <strong>Recover locked chips:</strong> buy-in od{' '}
+            {sitRecovery.amount} čipova za mesto {sitRecovery.seat + 1} nije
+            seo za sto posle lock-a. Klikni recovery da pošalješ samo release,
+            bez novog lock-a ili sit zahteva.
+            <br />
+            Lock TX: <code>{shortPk(sitRecovery.lockTx)}</code>
+            <br />
+            Sit error: {sitRecovery.sitError}
+            {sitRecovery.releaseError ? (
+              <>
+                <br />
+                Release error: {sitRecovery.releaseError}
+              </>
+            ) : null}
+          </div>
+        ) : null}
         <div className="row row--compact">
           <div>
             <label>
@@ -723,6 +864,7 @@ export function PokerPlay() {
                 !playerId ||
                 !connected ||
                 busy ||
+                sitRecoveryActive ||
                 (mySeat !== null ? maxAddChips <= 0 : maxBuyIn <= 0)
               }
             />
@@ -734,7 +876,7 @@ export function PokerPlay() {
               <button
                 type="button"
                 className="secondary"
-                disabled={maxAddChips <= 0 || busy}
+                disabled={maxAddChips <= 0 || busy || sitRecoveryActive}
                 onClick={() => setBuyIn(String(maxAddChips))}
               >
                 Max ({maxAddChips})
@@ -749,11 +891,16 @@ export function PokerPlay() {
                   maxAddChips <= 0 ||
                   !mintPk ||
                   !vaultTxReady ||
+                  sitRecoveryActive ||
                   busy
                 }
                 onClick={() => void handleAddChips()}
               >
-                {busy ? 'Potpis…' : inRebuyGrace ? 'Dopuni (rebuy)' : 'Dopuni chipove'}
+                {busy
+                  ? 'Potpis…'
+                  : inRebuyGrace
+                    ? 'Dopuni (rebuy)'
+                    : 'Dopuni chipove'}
               </button>
             </>
           ) : (
@@ -761,7 +908,7 @@ export function PokerPlay() {
               <button
                 type="button"
                 className="secondary"
-                disabled={maxBuyIn <= 0 || busy}
+                disabled={maxBuyIn <= 0 || busy || sitRecoveryActive}
                 onClick={() => setBuyIn(String(maxBuyIn))}
               >
                 Max ({maxBuyIn})
@@ -776,6 +923,7 @@ export function PokerPlay() {
                   maxBuyIn <= 0 ||
                   !mintPk ||
                   !vaultTxReady ||
+                  sitRecoveryActive ||
                   busy
                 }
                 onClick={() => void handleSit()}
@@ -784,10 +932,26 @@ export function PokerPlay() {
               </button>
             </>
           )}
+          {sitRecovery ? (
+            <button
+              type="button"
+              className="accent"
+              disabled={!playerId || !connected || !idl || !mintPk || busy}
+              onClick={() => void handleRecoverLockedChips()}
+            >
+              {busy ? 'Potpis…' : 'Recover locked chips'}
+            </button>
+          ) : null}
           <button
             type="button"
             className="secondary"
-            disabled={!playerId || !connected || mySeat === null || busy}
+            disabled={
+              !playerId ||
+              !connected ||
+              mySeat === null ||
+              busy ||
+              sitRecoveryActive
+            }
             onClick={() => void handleStand()}
           >
             {busy ? 'Potpis…' : 'Ustani'}
@@ -795,7 +959,9 @@ export function PokerPlay() {
           <button
             type="button"
             className="accent"
-            disabled={!playerId || !connected || !canStart || busy}
+            disabled={
+              !playerId || !connected || !canStart || busy || sitRecoveryActive
+            }
             onClick={() => startHand()}
           >
             Nova ruka

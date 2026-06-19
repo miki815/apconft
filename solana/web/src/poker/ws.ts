@@ -50,6 +50,8 @@ export interface YouState {
   canAct: boolean
   toCall: number
   rebuyDeadlineAt: number | null
+  /** Chips releasable on stand (stack + pending add-chips); omitted on older servers */
+  releasableStack?: number
 }
 
 export interface PokerTableView {
@@ -97,6 +99,11 @@ type PendingRequest =
       kind: 'add-chips'
       amount: number
       resolve: (result: AddChipsWaitResult) => void
+      timer: ReturnType<typeof setTimeout>
+    }
+  | {
+      kind: 'stand'
+      resolve: (err: string | null) => void
       timer: ReturnType<typeof setTimeout>
     }
 
@@ -239,12 +246,19 @@ export function usePokerWs(playerId: string | null) {
             you: {
               ...msg.you,
               rebuyDeadlineAt: msg.you.rebuyDeadlineAt ?? null,
+              ...(typeof msg.you.releasableStack === 'number'
+                ? { releasableStack: msg.you.releasableStack }
+                : {}),
             },
           }
           setTable(next)
 
           const pending = pendingRef.current
           if (pending?.kind === 'sit' && msg.you.seat === pending.seat) {
+            clearPending(null)
+          }
+
+          if (pending?.kind === 'stand' && msg.you.seat === null) {
             clearPending(null)
           }
 
@@ -342,9 +356,26 @@ export function usePokerWs(playerId: string | null) {
     [send, clearPending],
   )
 
-  const stand = useCallback(
-    (releaseTx?: string) => send({ type: 'stand', releaseTx }),
-    [send],
+  const standAndWait = useCallback(
+    async (releaseTx?: string): Promise<string | null> =>
+      new Promise((resolve) => {
+        if (pendingRef.current) {
+          resolve('Prethodni zahtev još traje')
+          return
+        }
+        const timer = setTimeout(() => {
+          if (pendingRef.current?.kind === 'stand') {
+            clearPending('Server nije odgovorio na vreme')
+          }
+        }, WS_TIMEOUT_MS)
+        pendingRef.current = {
+          kind: 'stand',
+          resolve,
+          timer,
+        }
+        send({ type: 'stand', releaseTx })
+      }),
+    [send, clearPending],
   )
   const startHand = useCallback(() => send({ type: 'start-hand' }), [send])
   const act = useCallback(
@@ -360,7 +391,7 @@ export function usePokerWs(playerId: string | null) {
     sitAndWait,
     checkAddChips,
     addChipsAndWait,
-    stand,
+    standAndWait,
     startHand,
     act,
   }

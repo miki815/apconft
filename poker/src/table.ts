@@ -405,6 +405,10 @@ export class HoldemTable {
     }
 
     this.actionSeat = this.firstPostflopActionSeat()
+    if (this.actionSeat === null) {
+      this.runOutBoard()
+      this.showdown()
+    }
   }
 
   private nextStreet(): BettingRound {
@@ -571,10 +575,12 @@ export class HoldemTable {
     return this.nextSeatAfter(this.blindSeat('bb'))
   }
 
-  private firstPostflopActionSeat(): number {
+  private firstPostflopActionSeat(): number | null {
     const n = this.seatsInHandCount()
-    if (n === 2) return this.buttonSeat
-    return this.nextSeatAfter(this.buttonSeat)
+    const preferred = n === 2 ? this.buttonSeat : this.nextSeatAfter(this.buttonSeat)
+    const player = this.playerAtSeat(preferred)
+    if (player && this.canPlayerAct(player)) return preferred
+    return this.nextActionSeat(preferred)
   }
 
   private nextActionSeat(from: number): number | null {

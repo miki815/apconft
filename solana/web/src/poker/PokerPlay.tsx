@@ -168,6 +168,12 @@ export function PokerPlay() {
     return table.seats[mySeat]?.stack ?? 0
   }, [table, mySeat])
 
+  const isShortStackCall =
+    table?.you.canAct === true &&
+    table.you.toCall > 0 &&
+    myStack > 0 &&
+    table.you.toCall > myStack
+
   const releasableStack =
     table?.you.releasableStack !== undefined
       ? table.you.releasableStack
@@ -691,7 +697,15 @@ export function PokerPlay() {
             <div className="hero-actions">
               {table.you.toCall > 0 ? (
                 <span className="hero-actions-hint">
-                  Call <strong>{table.you.toCall}</strong>
+                  {isShortStackCall ? (
+                    <>
+                      Call all-in <strong>{myStack}</strong>
+                    </>
+                  ) : (
+                    <>
+                      Call <strong>{table.you.toCall}</strong>
+                    </>
+                  )}
                 </span>
               ) : null}
               {canRaise && raiseBounds ? (
@@ -739,7 +753,7 @@ export function PokerPlay() {
                     className="primary"
                     onClick={() => act({ type: 'call' })}
                   >
-                    Call
+                    {isShortStackCall ? `Call all-in ${myStack}` : 'Call'}
                   </button>
                 )}
                 {canRaise && raiseBounds ? (

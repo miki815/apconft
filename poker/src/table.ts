@@ -216,9 +216,16 @@ export class HoldemTable {
       case 'call': {
         const toCall = this.currentBet - player.betThisRound
         if (toCall <= 0) return this.fail('Nothing to call')
-        this.commitChips(player, toCall)
+        const effectiveCall = Math.min(toCall, player.stack)
+        this.commitChips(player, effectiveCall)
+        if (player.stack === 0) player.status = 'all-in'
         this.needsAction.delete(player.seat)
-        this.setRoundAction(player.seat, `Call ${toCall}`)
+        this.setRoundAction(
+          player.seat,
+          effectiveCall < toCall
+            ? `Call all-in ${effectiveCall}`
+            : `Call ${toCall}`,
+        )
         break
       }
       case 'bet': {

@@ -1,10 +1,18 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { createDeck, HoldemTable } from './index.js'
+import { createDeck, HoldemTable, parseCards } from './index.js'
 import type { Card } from './types.js'
 
 function fixedShuffle(cards: Card[]): Card[] {
   return cards
+}
+
+function riggedShuffle(cardText: string): (cards: Card[]) => Card[] {
+  const front = parseCards(cardText)
+  return (cards: Card[]) => {
+    const used = new Set(front.map((c) => `${c.rank}${c.suit}`))
+    return [...front, ...cards.filter((c) => !used.has(`${c.rank}${c.suit}`))]
+  }
 }
 
 function act(
@@ -125,6 +133,48 @@ function driveLockedRunout(table: HoldemTable) {
   }
 }
 
+function driveCheckCallToCompletion(table: HoldemTable) {
+  for (let step = 0; step < 60; step++) {
+    const s = table.getState()
+    if (s.handComplete) return
+    if (s.actionSeat === null) return
+    const actor = s.players.find((p) => p.seat === s.actionSeat)!
+    const toCall = s.currentBet - actor.betThisRound
+    if (toCall > 0 && actor.stack >= toCall) {
+      act(table, actor.id, { type: 'call' })
+    } else if (toCall === 0) {
+      act(table, actor.id, { type: 'check' })
+    } else {
+      act(table, actor.id, { type: 'all-in' })
+    }
+  }
+}
+
+function driveThreeWaySidePotAllIn(table: HoldemTable) {
+  table.startHand()
+  for (let i = 0; i < 30; i++) {
+    const s = table.getState()
+    if (s.board.length > 0 || s.handComplete || s.actionSeat === null) break
+    const actor = s.players.find((p) => p.seat === s.actionSeat)!
+    const toCall = s.currentBet - actor.betThisRound
+    if (actor.id === 'A') {
+      if (s.currentBet < 100) {
+        act(table, 'A', { type: 'raise', total: 100 })
+      } else if (toCall > 0) {
+        act(table, 'A', { type: 'call' })
+      } else {
+        act(table, 'A', { type: 'check' })
+      }
+    } else {
+      act(table, actor.id, { type: 'all-in' })
+    }
+  }
+  while (table.isRunoutPending()) {
+    const r = table.advanceRunout()
+    assert.equal(r.ok, true, r.error)
+  }
+}
+
 describe('HoldemTable', () => {
   it('posts blinds and deals hole cards', () => {
     const table = new HoldemTable({
@@ -172,6 +222,7 @@ describe('HoldemTable', () => {
     const end = table.getState()
     assert.equal(end.handComplete, true)
     assert.equal(end.winners.length, 1)
+    assert.equal(end.winners[0]!.handRank, undefined)
     const totalStacks = end.players.reduce((n, p) => n + p.stack, 0)
     assert.equal(totalStacks, 2000)
   })
@@ -207,8 +258,41 @@ describe('HoldemTable', () => {
     const end = table.getState()
     assert.equal(end.handComplete, true)
     assert.equal(end.board.length, 5)
+    assert.ok(end.winners.length >= 1)
+    for (const winner of end.winners) {
+      assert.equal(typeof winner.handRank?.category, 'number')
+      assert.equal(typeof winner.handRank?.name, 'string')
+      assert.equal(winner.potIndex >= 0, true)
+    }
     const total = end.players.reduce((n, p) => n + p.stack, 0)
     assert.equal(total, 400)
+  })
+
+  it('board-play split winners share the same handRank', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'a', seat: 0, stack: 200 },
+        { id: 'b', seat: 1, stack: 200 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 0,
+      shuffle: riggedShuffle('2c 3d 4c 5d 6c Tc Jd Qh 7c Ks 8c As'),
+    })
+    table.startHand()
+    driveCheckCallToCompletion(table)
+
+    const end = table.getState()
+    assert.equal(end.handComplete, true)
+    assert.equal(end.winners.length, 2)
+    assert.deepEqual(
+      [...new Set(end.winners.map((w) => w.playerId))].sort(),
+      ['a', 'b'],
+    )
+    assert.equal(end.winners[0]!.potIndex, 0)
+    assert.equal(end.winners[1]!.potIndex, 0)
+    assert.deepEqual(end.winners[0]!.handRank, end.winners[1]!.handRank)
+    assert.equal(end.winners[0]!.handRank?.name, 'Straight')
   })
 
   it('rejects check when facing bet', () => {
@@ -348,6 +432,64 @@ describe('HoldemTable short-stack call', () => {
     assert.deepEqual(end.pots[1]!.eligible.sort(), ['A', 'C'])
     const endStacks = end.players.reduce((n, p) => n + p.stack, 0)
     assert.equal(endStacks, startStacks)
+    assert.ok(end.winners.every((w) => w.handRank))
+  })
+
+  it('side-pot winners carry handRank per pot with different winners', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'A', seat: 0, stack: 500 },
+        { id: 'B', seat: 1, stack: 50 },
+        { id: 'C', seat: 2, stack: 100 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 2,
+      shuffle: riggedShuffle('Qh Qd Kh Kd Jh Jd 2c 3c 4d 5h 6s'),
+    })
+    driveThreeWaySidePotAllIn(table)
+
+    const end = table.getState()
+    assert.equal(end.handComplete, true)
+    assert.deepEqual(
+      end.pots.map((p) => p.amount),
+      [150, 100],
+    )
+    assert.deepEqual(
+      end.winners.map((w) => ({
+        playerId: w.playerId,
+        potIndex: w.potIndex,
+        rank: w.handRank?.name,
+      })),
+      [
+        { playerId: 'B', potIndex: 0, rank: 'Two Pair' },
+        { playerId: 'A', potIndex: 1, rank: 'Two Pair' },
+      ],
+    )
+  })
+
+  it('same player winning multiple pots keeps per-pot handRank details', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'A', seat: 0, stack: 500 },
+        { id: 'B', seat: 1, stack: 50 },
+        { id: 'C', seat: 2, stack: 100 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 2,
+      shuffle: riggedShuffle('Ah Ad Kh Kd Qh Qd 2c 3c 4d 5h 6s'),
+    })
+    driveThreeWaySidePotAllIn(table)
+
+    const end = table.getState()
+    const aWins = end.winners.filter((w) => w.playerId === 'A')
+    assert.equal(end.handComplete, true)
+    assert.deepEqual(
+      aWins.map((w) => w.potIndex),
+      [0, 1],
+    )
+    assert.ok(aWins.every((w) => w.handRank?.name === 'Two Pair'))
   })
 
   it('keeps a covered call as a normal call', () => {

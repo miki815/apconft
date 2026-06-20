@@ -33,8 +33,12 @@ export type ServerMessage =
       bigBlind: number
       handInProgress: boolean
       showdownActive: boolean
-      /** Unix ms when showdown phase ends; null if not in showdown */
+      /** Unix ms when the current result display ends; null outside result display. */
       showdownEndsAt: number | null
+      /** Result display kind; fold results do not reveal cards. */
+      resultKind: 'showdown' | 'fold' | null
+      /** Server-authoritative result display duration, used for countdown progress. */
+      resultDurationMs: number | null
       you: YouState
     }
   | { type: 'error'; message: string }

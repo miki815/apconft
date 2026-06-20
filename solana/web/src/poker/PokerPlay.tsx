@@ -9,8 +9,9 @@ import { RebuyGraceBar } from './RebuyGraceBar'
 import { ShowdownBar } from './ShowdownBar'
 import { PotBreakdown } from './PotBreakdown'
 import { computeDisplayPots } from './pots'
-import { isShowdownPhase, SHOWDOWN_MS } from './showdown'
+import { isResultDisplayActive, isShowdownPhase } from './showdown'
 import { cardLabel, preflightSitMessage, shortPk, usePokerWs } from './ws'
+import type { WinnerResult } from './ws'
 
 const TABLE_MINT = import.meta.env.VITE_MINT || ''
 const PROGRAM_ID_STR =
@@ -35,6 +36,32 @@ interface SitRecoveryState {
   lockTx: string
   sitError: string
   releaseError: string | null
+}
+
+interface WinnerGroup {
+  playerId: string
+  total: number
+  wins: WinnerResult[]
+}
+
+function potLabel(index: number): string {
+  return index === 0 ? 'Glavni pot' : `Side pot ${index}`
+}
+
+function groupWinners(winners: WinnerResult[]): WinnerGroup[] {
+  const byPlayer = new Map<string, WinnerGroup>()
+  for (const winner of winners) {
+    const group =
+      byPlayer.get(winner.playerId) ??
+      { playerId: winner.playerId, total: 0, wins: [] }
+    group.total += winner.amount
+    group.wins.push(winner)
+    byPlayer.set(winner.playerId, group)
+  }
+  return [...byPlayer.values()].map((group) => ({
+    ...group,
+    wins: [...group.wins].sort((a, b) => a.potIndex - b.potIndex),
+  }))
 }
 
 export function PokerPlay() {
@@ -96,19 +123,17 @@ export function PokerPlay() {
   const mySeat = table?.you.seat
   const rebuyDeadlineAt = table?.you.rebuyDeadlineAt ?? null
   const showdownPhase = useMemo(() => isShowdownPhase(table), [table])
-  const [localShowdownEndsAt, setLocalShowdownEndsAt] = useState<number | null>(
-    null,
+  const resultPhase = useMemo(() => isResultDisplayActive(table), [table])
+  const resultEndsAt = table?.showdownEndsAt ?? null
+  const resultDurationMs = table?.resultDurationMs ?? null
+  const winnerGroups = useMemo(
+    () => groupWinners(table?.state.winners ?? []),
+    [table],
   )
-
-  useEffect(() => {
-    if (showdownPhase && !table?.showdownEndsAt) {
-      setLocalShowdownEndsAt(Date.now() + SHOWDOWN_MS)
-    } else if (!showdownPhase) {
-      setLocalShowdownEndsAt(null)
-    }
-  }, [showdownPhase, table?.showdownEndsAt])
-
-  const showdownEndsAt = table?.showdownEndsAt ?? localShowdownEndsAt
+  const winnerIds = useMemo(
+    () => new Set(winnerGroups.map((winner) => winner.playerId)),
+    [winnerGroups],
+  )
 
   const [raiseTotal, setRaiseTotal] = useState(0)
 
@@ -142,12 +167,12 @@ export function PokerPlay() {
     eligibleCount >= 2 &&
     table &&
     !table.handInProgress &&
-    !showdownPhase &&
+    !resultPhase &&
     table.state.handComplete
 
   const board = table?.state.board ?? []
   const showBoard =
-    table?.handInProgress || board.length > 0 || showdownPhase
+    table?.handInProgress || board.length > 0 || showdownPhase || resultPhase
   const maxBuyIn = mySeat !== null ? 0 : (vaultChips ?? 0)
   const maxAddChips = mySeat !== null ? (vaultChips ?? 0) : 0
   const chipAmountNum = parseInt(buyIn, 10)
@@ -541,13 +566,13 @@ export function PokerPlay() {
       </div>
 
       <section
-        className={`poker-table-section panel panel--flush ${showdownPhase ? 'panel--showdown' : ''}${potDisplay.showBreakdown ? ' poker-table-section--pot-breakdown' : ''}`}
+        className={`poker-table-section panel panel--flush ${resultPhase ? 'panel--showdown' : ''}${potDisplay.showBreakdown ? ' poker-table-section--pot-breakdown' : ''}`}
       >
         <div
           className={`poker-table-wrap${potDisplay.showBreakdown ? ' poker-table-wrap--pot-breakdown' : ''}`}
         >
           <div
-            className={`table-visual table-visual--poker ${showdownPhase ? 'table-visual--showdown' : ''}`}
+            className={`table-visual table-visual--poker ${resultPhase ? 'table-visual--showdown' : ''}`}
           >
             <div className="table-rail" />
 
@@ -599,6 +624,7 @@ export function PokerPlay() {
               const isMe = mySeat === seat
               const isAction = table?.state.actionSeat === seat
               const folded = inHand?.status === 'folded'
+              const isWinner = !!info && resultPhase && winnerIds.has(info.playerId)
               const displayStack =
                 inHand !== undefined ? inHand.stack : (info?.stack ?? 0)
               const revealCards =
@@ -633,6 +659,7 @@ export function PokerPlay() {
                       pickSeat === seat ? 'selected' : '',
                       isMe ? 'you' : '',
                       isAction ? 'action' : '',
+                      isWinner ? 'winner' : '',
                       folded ? 'folded' : '',
                       info ? 'occupied' : 'empty',
                     ]
@@ -661,9 +688,11 @@ export function PokerPlay() {
               )
             })}
 
-            {showdownPhase ? (
+            {resultPhase ? (
               <div className="showdown-overlay" aria-live="polite">
-                <span className="showdown-overlay-title">Showdown</span>
+                <span className="showdown-overlay-title">
+                  {showdownPhase ? 'Showdown' : 'Rezultat ruke'}
+                </span>
               </div>
             ) : null}
           </div>
@@ -783,18 +812,40 @@ export function PokerPlay() {
           ) : null}
         </div>
 
-        {showdownPhase && showdownEndsAt ? (
-          <ShowdownBar key={showdownEndsAt} />
+        {resultPhase && resultEndsAt && resultDurationMs ? (
+          <ShowdownBar
+            key={resultEndsAt}
+            endsAt={resultEndsAt}
+            durationMs={resultDurationMs}
+          />
+        ) : resultPhase ? (
+          <p className="showdown-bar-fallback">Čeka se server deadline.</p>
         ) : null}
       </section>
 
-      {showdownPhase && table && table.state.winners.length > 0 ? (
+      {resultPhase && table && winnerGroups.length > 0 ? (
         <div className="winner-banner">
-          <span className="winner-banner-title">Showdown</span>
-          {table.state.winners.map((w) => (
-            <span key={w.playerId} className="winner-chip">
-              {shortPk(w.playerId)} <strong>+{w.amount}</strong>
-            </span>
+          <span className="winner-banner-title">
+            {table.resultKind === 'showdown' ? 'Showdown rezultat' : 'Rezultat ruke'}
+          </span>
+          {winnerGroups.map((group) => (
+            <div key={group.playerId} className="winner-chip">
+              <div className="winner-chip-head">
+                <span>{group.playerId === playerId ? 'Ti' : shortPk(group.playerId)}</span>
+                <strong>+{group.total}</strong>
+              </div>
+              <div className="winner-chip-details">
+                {group.wins.map((win) => (
+                  <span
+                    key={`${win.playerId}-${win.potIndex}`}
+                    className="winner-pot-detail"
+                  >
+                    {potLabel(win.potIndex)} +{win.amount}
+                    {win.handRank ? ` · ${win.handRank.name}` : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       ) : null}

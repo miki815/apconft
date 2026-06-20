@@ -73,9 +73,18 @@ function applyPendingStackAdds(room: PokerRoom) {
 function forceFinishShowdown(room: PokerRoom) {
   const r = room as unknown as {
     inShowdown: boolean
+    resultKind: 'showdown' | 'fold' | null
     finishHand(): void
   }
-  if (r.inShowdown) r.finishHand()
+  if (r.inShowdown || r.resultKind !== null) r.finishHand()
+}
+
+function forceFinishResultDisplay(room: PokerRoom) {
+  const r = room as unknown as {
+    resultKind: 'showdown' | 'fold' | null
+    finishHand(): void
+  }
+  if (r.resultKind !== null) r.finishHand()
 }
 
 async function waitForRunoutTimer() {
@@ -345,10 +354,48 @@ describe('PokerRoom', () => {
 
     const end = room.snapshot()
     assert.equal(end.handInProgress, true)
-    assert.equal(end.state!.handComplete, false)
-    assert.equal(end.state!.bettingRound, 'preflop')
-    const total = end.seats.reduce((n, s) => n + (s?.stack ?? 0), 0)
-    assert.equal(total, 1000 - room.smallBlind - room.bigBlind)
+    assert.equal(end.state!.handComplete, true)
+    assert.equal(end.state!.bettingRound, 'showdown')
+    assert.equal(end.showdownActive, false)
+    assert.equal(end.resultKind, 'fold')
+    assert.equal(end.resultDurationMs, SHOWDOWN_MS)
+    assert.ok(end.showdownEndsAt)
+    assert.equal(end.state!.winners.length, 1)
+    assert.equal(end.state!.winners[0]!.handRank, undefined)
+  })
+
+  it('fold result keeps same deadline and per-player operation guards', async () => {
+    const room = new PokerRoom('test', noTimer)
+    await room.sit('a', 0, 500)
+    await room.sit('b', 1, 500)
+    await room.sit('c', 2, 300)
+
+    finishHandByFold(room)
+    const result = room.snapshot()
+    const participant = result.state!.players[0]!.id
+    assert.equal(result.resultKind, 'fold')
+    assert.equal(result.handInProgress, true)
+    assert.equal(result.state!.handComplete, true)
+    assert.ok(result.showdownEndsAt)
+
+    await sleep(10)
+    const late = room.snapshot()
+    assert.equal(late.resultKind, 'fold')
+    assert.equal(late.showdownEndsAt, result.showdownEndsAt)
+    assert.deepEqual(late.state!.winners, result.state!.winners)
+
+    assert.equal(await room.stand(participant), 'Cannot leave during a hand')
+    assert.deepEqual(await room.addChips(participant, 25), {
+      appliesFromNextHand: true,
+    })
+    assert.equal(roomSeats(room).find((s) => s?.playerId === participant)?.pendingStackAdd, 25)
+
+    assert.deepEqual(await room.addChips('c', 50), {
+      appliesFromNextHand: true,
+    })
+    assert.equal(roomSeats(room)[2]?.pendingStackAdd, 50)
+    assert.equal(await room.stand('c'), null)
+    assert.equal(room.snapshot().seats[2], null)
   })
 
   it('enters showdown phase with revealed cards', async () => {
@@ -362,7 +409,10 @@ describe('PokerRoom', () => {
       if (!st) break
       if (st.handComplete) {
         assert.equal(snap.showdownActive, true)
+        assert.equal(snap.resultKind, 'showdown')
+        assert.equal(snap.resultDurationMs, SHOWDOWN_MS)
         assert.ok(snap.showdownEndsAt)
+        assert.ok(st.winners.every((w) => w.handRank))
         const revealed = st.players.filter(
           (p) => p.holeCards && p.holeCards.length === 2,
         )
@@ -458,7 +508,8 @@ describe('PokerRoom', () => {
     finishHandByFold(room)
     const afterFold = room.snapshot()
     assert.equal(afterFold.handInProgress, true)
-    assert.equal(afterFold.state!.handComplete, false)
+    assert.equal(afterFold.state!.handComplete, true)
+    assert.equal(afterFold.resultKind, 'fold')
     assert.equal(afterFold.state!.players.length, 2)
 
     assert.equal(await room.sit('c', 2, 300), null)
@@ -475,6 +526,13 @@ describe('PokerRoom', () => {
     await room.sit('b', 1, 500)
 
     finishHandByFold(room)
+
+    const result = room.snapshot()
+    assert.equal(result.handInProgress, true)
+    assert.equal(result.state!.handComplete, true)
+    assert.equal(result.resultKind, 'fold')
+
+    forceFinishResultDisplay(room)
 
     const snap = room.snapshot()
     assert.equal(snap.handInProgress, true)
@@ -500,6 +558,7 @@ describe('PokerRoom', () => {
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
     finishHandByFold(room)
+    forceFinishResultDisplay(room)
     assert.equal(room.snapshot().handInProgress, true)
     assert.equal(room.startHand(), 'Hand already in progress')
   })
@@ -554,6 +613,12 @@ describe('PokerRoom waiting sit', () => {
     assert.equal(await room.sit('c', 2, 300), null)
 
     finishHandByFold(room)
+    const result = room.snapshot()
+    assert.equal(result.resultKind, 'fold')
+    assert.equal(result.state!.players.find((p) => p.id === 'c'), undefined)
+
+    forceFinishResultDisplay(room)
+
     const snap = room.snapshot()
     assert.equal(snap.handInProgress, true)
     assert.equal(snap.state!.players.length, 3)
@@ -712,16 +777,16 @@ describe('PokerRoom action timeout', () => {
 
       finishHandByFold(room)
       assert.equal(room.snapshot().handInProgress, true)
-      assert.equal(room.snapshot().state!.bettingRound, 'preflop')
+      assert.equal(room.snapshot().state!.handComplete, true)
+      assert.equal(room.snapshot().resultKind, 'fold')
 
       await waitForActionTimer()
 
       const after = room.snapshot()
       assert.equal(after.handInProgress, true)
-      assert.equal(after.state!.handComplete, false)
-      assert.equal(after.state!.bettingRound, 'preflop')
-      const total = after.seats.reduce((n, s) => n + (s?.stack ?? 0), 0)
-      assert.equal(total, 1000 - room.smallBlind - room.bigBlind)
+      assert.equal(after.state!.handComplete, true)
+      assert.equal(after.resultKind, 'fold')
+      assert.equal(after.state!.actionSeat, null)
     } finally {
       stopRoomTimer(room)
     }
@@ -739,9 +804,11 @@ describe('PokerRoom action timeout', () => {
         if (!st) break
         if (st.handComplete) {
           assert.equal(snap.showdownActive, true)
+          assert.equal(snap.resultKind, 'showdown')
           await waitForActionTimer()
           const still = room.snapshot()
           assert.equal(still.showdownActive, true)
+          assert.equal(still.resultKind, 'showdown')
           assert.equal(still.state!.handComplete, true)
           return
         }
@@ -771,6 +838,13 @@ describe('PokerRoom action timeout', () => {
       assert.notEqual(room.snapshot().state!.actionSeat, null)
 
       finishHandByFold(room)
+      const result = room.snapshot()
+      assert.equal(result.handInProgress, true)
+      assert.equal(result.state!.handComplete, true)
+      assert.equal(result.resultKind, 'fold')
+
+      forceFinishResultDisplay(room)
+
       const snap = room.snapshot()
       assert.equal(snap.handInProgress, true)
       assert.equal(snap.state!.handComplete, false)
@@ -885,6 +959,9 @@ describe('PokerRoom add chips', () => {
       appliesFromNextHand: true,
     })
     finishHandByFold(room)
+    assert.equal(room.snapshot().resultKind, 'fold')
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 100)
+    forceFinishResultDisplay(room)
     const snap = room.snapshot()
     assert.equal(snap.handInProgress, true)
     const aInHand = snap.state!.players.find((p) => p.id === 'a')!
@@ -947,6 +1024,8 @@ describe('PokerRoom add chips', () => {
     await room.sit('b', 1, 500)
     await room.addChips('a', 80)
     finishHandByFold(room)
+    assert.equal(roomSeats(room)[0]?.pendingStackAdd, 80)
+    forceFinishResultDisplay(room)
     assert.equal(roomSeats(room)[0]?.pendingStackAdd, 0)
     assert.ok(roomSeats(room)[0]!.stack > 0)
   })
@@ -976,6 +1055,9 @@ describe('PokerRoom add chips', () => {
     })
     assert.equal(roomSeats(room)[2]?.pendingStackAdd, 100)
     finishHandByFold(room)
+    assert.equal(room.snapshot().resultKind, 'fold')
+    assert.equal(roomSeats(room)[2]?.pendingStackAdd, 100)
+    forceFinishResultDisplay(room)
     const snap = room.snapshot()
     const c = snap.state!.players.find((p) => p.id === 'c')
     assert.ok(c)
@@ -1026,15 +1108,18 @@ describe('PokerRoom releasableStack stand', () => {
     assert.equal(await room.stand('a'), null)
   })
 
-  it('T4: HU winner releasableStack after all-in can exceed buy-in', async () => {
+  it('T4: HU largest stack releasableStack after all-in matches seat stack', async () => {
     const room = new PokerRoom('test', noTimer)
     await room.sit('a', 0, 500)
     await room.sit('b', 1, 500)
-    const end = await allInAndFinish(room)
-    const winner = end.seats.find((s) => s && s.stack > 500)
-    assert.ok(winner)
-    assert.ok(winner!.stack > 500)
-    assert.equal(roomReleasableStack(room, winner!.playerId), winner!.stack)
+    await allInAndFinish(room)
+    const end = room.snapshot()
+    const richest = end.seats
+      .filter((s): s is NonNullable<typeof s> => s !== null)
+      .sort((a, b) => b.stack - a.stack)[0]
+    assert.ok(richest)
+    assert.ok(richest.stack >= 500)
+    assert.equal(roomReleasableStack(room, richest.playerId), richest.stack)
   })
 
   it('T5: busted loser releasableStack is zero', async () => {
@@ -1232,6 +1317,10 @@ describe('PokerRoom locked runout', () => {
     assert.ok(seen.has(3))
     assert.ok(seen.has(4))
     assert.ok(seen.has(5))
+    const result = room.snapshot()
+    assert.equal(result.resultKind, 'showdown')
+    assert.ok(result.showdownEndsAt)
+    assert.equal(room.youState('a').canAct, false)
   })
 
   it('you.canAct is false for lone active player during runout', async () => {

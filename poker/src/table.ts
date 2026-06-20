@@ -1,5 +1,5 @@
 import { createDeck, shuffleDeck } from './deck.js'
-import { compareHands, evaluateBest } from './hand-eval.js'
+import { categoryName, compareHands, evaluateBest } from './hand-eval.js'
 import { buildPots, splitPot } from './pot.js'
 import type {
   ActionResult,
@@ -509,7 +509,19 @@ export class HoldemTable {
 
       const shares = splitPot(pot.amount, bestIds)
       for (const s of shares) {
-        this.winners.push({ playerId: s.playerId, amount: s.amount, potIndex: i })
+        this.winners.push({
+          playerId: s.playerId,
+          amount: s.amount,
+          potIndex: i,
+          ...(bestEval
+            ? {
+                handRank: {
+                  category: bestEval.category,
+                  name: categoryName(bestEval.category),
+                },
+              }
+            : {}),
+        })
         const pl = this.players.find((p) => p.id === s.playerId)!
         pl.stack += s.amount
       }

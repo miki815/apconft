@@ -696,6 +696,13 @@ button.btn-allin {
   animation: pulse-seat 1.2s ease-in-out infinite;
 }
 
+.seat--poker.winner {
+  border-color: var(--success);
+  box-shadow:
+    0 0 0 3px rgba(93, 222, 168, 0.32),
+    0 0 22px rgba(93, 222, 168, 0.22);
+}
+
 .seat--poker.folded {
   opacity: 0.45;
 }
@@ -1170,17 +1177,49 @@ button.btn-allin {
 }
 
 .winner-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 9rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 10px;
+  background: rgba(10, 16, 26, 0.48);
+  border: 1px solid rgba(240, 193, 75, 0.18);
   font-size: 0.85rem;
   color: #c5d4e8;
 }
 
-.winner-chip strong {
+.winner-chip-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-weight: 700;
+}
+
+.winner-chip-head strong {
   color: var(--success);
 }
 
+.winner-chip-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.winner-pot-detail {
+  font-size: 0.72rem;
+  color: #8fa3bb;
+}
+
 .showdown-bar-wrap {
-  height: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   margin: 0.85rem 1rem 0;
+}
+
+.showdown-bar-track {
+  height: 6px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.35);
   overflow: hidden;
@@ -1194,16 +1233,14 @@ button.btn-allin {
   transform: scaleX(1);
   background: linear-gradient(90deg, var(--gold) 0%, var(--success) 100%);
   box-shadow: 0 0 12px rgba(240, 193, 75, 0.45);
-  animation: showdown-drain linear forwards;
 }
 
-@keyframes showdown-drain {
-  from {
-    transform: scaleX(1);
-  }
-  to {
-    transform: scaleX(0);
-  }
+.showdown-bar-text,
+.showdown-bar-fallback {
+  margin: 0;
+  text-align: center;
+  font-size: 0.72rem;
+  color: #8fa3bb;
 }
 
 .poker-controls {

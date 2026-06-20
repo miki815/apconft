@@ -15,6 +15,18 @@ export type PlayerAction =
   | { type: 'raise'; total: number }
   | { type: 'all-in' }
 
+export interface WinnerHandRank {
+  category: number
+  name: string
+}
+
+export interface WinnerResult {
+  playerId: string
+  amount: number
+  potIndex: number
+  handRank?: WinnerHandRank
+}
+
 export interface TableState {
   handNumber: number
   buttonSeat: number
@@ -35,7 +47,7 @@ export interface TableState {
   minRaiseTo: number
   actionSeat: number | null
   handComplete: boolean
-  winners: { playerId: string; amount: number }[]
+  winners: WinnerResult[]
 }
 
 export interface SeatInfo {
@@ -63,6 +75,8 @@ export interface PokerTableView {
   handInProgress: boolean
   showdownActive: boolean
   showdownEndsAt: number | null
+  resultKind: 'showdown' | 'fold' | null
+  resultDurationMs: number | null
   you: YouState
 }
 
@@ -178,6 +192,8 @@ export function usePokerWs(playerId: string | null) {
           handInProgress?: boolean
           showdownActive?: boolean
           showdownEndsAt?: number | null
+          resultKind?: 'showdown' | 'fold' | null
+          resultDurationMs?: number | null
           seat?: number
           buyIn?: number
           amount?: number
@@ -243,6 +259,8 @@ export function usePokerWs(playerId: string | null) {
             handInProgress: msg.handInProgress ?? false,
             showdownActive: msg.showdownActive ?? false,
             showdownEndsAt: msg.showdownEndsAt ?? null,
+            resultKind: msg.resultKind ?? null,
+            resultDurationMs: msg.resultDurationMs ?? null,
             you: {
               ...msg.you,
               rebuyDeadlineAt: msg.you.rebuyDeadlineAt ?? null,

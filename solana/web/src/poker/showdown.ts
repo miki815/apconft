@@ -2,6 +2,11 @@ import type { PokerTableView } from './ws'
 
 export const SHOWDOWN_MS = 5000
 
+/** Result display is the shared post-hand phase for showdown and fold wins. */
+export function isResultDisplayActive(table: PokerTableView | null): boolean {
+  return table?.resultKind !== null && table?.state.handComplete === true
+}
+
 /** Detect multi-player showdown from server flags or revealed hole cards. */
 export function isShowdownPhase(table: PokerTableView | null): boolean {
   if (!table) return false

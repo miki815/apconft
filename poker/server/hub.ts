@@ -151,6 +151,8 @@ export class PokerHub {
       handInProgress: snap.handInProgress,
       showdownActive: snap.showdownActive,
       showdownEndsAt: snap.showdownEndsAt,
+      resultKind: snap.resultKind,
+      resultDurationMs: snap.resultDurationMs,
     }
     this.send(ws, msg)
   }

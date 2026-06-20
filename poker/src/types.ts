@@ -54,6 +54,18 @@ export interface PlayerState {
   roundAction: string | null
 }
 
+export interface WinnerHandRank {
+  category: number
+  name: string
+}
+
+export interface WinnerResult {
+  playerId: string
+  amount: number
+  potIndex: number
+  handRank?: WinnerHandRank
+}
+
 export interface TableState {
   handNumber: number
   buttonSeat: number
@@ -73,7 +85,7 @@ export interface TableState {
   lastAggressorSeat: number | null
   /** Hand over — winners assigned, board may be complete */
   handComplete: boolean
-  winners: { playerId: string; amount: number; potIndex: number }[]
+  winners: WinnerResult[]
 }
 
 export interface ActionResult {

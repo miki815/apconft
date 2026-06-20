@@ -17,6 +17,45 @@ function act(
   return r
 }
 
+function assertValidCheckAction(
+  table: HoldemTable,
+  allInButtonId: string,
+  expectedRound: string,
+) {
+  const s = table.getState()
+  assert.equal(s.bettingRound, expectedRound)
+  assert.notEqual(s.actionSeat, null)
+  const actor = s.players.find((p) => p.seat === s.actionSeat)!
+  const allInButton = s.players.find((p) => p.id === allInButtonId)!
+  assert.equal(allInButton.status, 'all-in')
+  assert.equal(allInButton.stack, 0)
+  assert.notEqual(actor.id, allInButtonId)
+  assert.notEqual(actor.status, 'folded')
+  assert.notEqual(actor.status, 'all-in')
+  assert.equal(actor.status, 'active')
+  assert.ok(actor.stack > 0)
+  assert.equal(s.currentBet - actor.betThisRound, 0)
+  act(table, actor.id, { type: 'check' })
+}
+
+function driveAllInButtonToFlop(table: HoldemTable, deepIds: Set<string>) {
+  table.startHand()
+  for (let i = 0; i < 80; i++) {
+    const s = table.getState()
+    if (s.bettingRound !== 'preflop' || s.handComplete || s.actionSeat === null) {
+      return
+    }
+    const actor = s.players.find((p) => p.seat === s.actionSeat)!
+    const toCall = s.currentBet - actor.betThisRound
+    if (deepIds.has(actor.id)) {
+      if (toCall > 0) act(table, actor.id, { type: 'call' })
+      else act(table, actor.id, { type: 'check' })
+    } else {
+      act(table, actor.id, { type: 'all-in' })
+    }
+  }
+}
+
 function threeWayLockedRunoutTable() {
   return new HoldemTable({
     players: [
@@ -192,6 +231,222 @@ describe('HoldemTable', () => {
   })
 })
 
+describe('HoldemTable short-stack call', () => {
+  it('treats heads-up preflop short-stack call as all-in', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'short', seat: 0, stack: 7 },
+        { id: 'deep', seat: 1, stack: 500 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 1,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    const startTotal = chipTotal(table)
+    const pre = table.getState()
+    const shortPre = pre.players.find((p) => p.id === 'short')!
+    assert.equal(pre.actionSeat, shortPre.seat)
+    assert.equal(pre.currentBet - shortPre.betThisRound, 5)
+    assert.equal(shortPre.stack, 2)
+
+    const r = table.applyAction('short', { type: 'call' })
+    assert.equal(r.ok, true, r.error)
+
+    const afterCall = table.getState()
+    const short = afterCall.players.find((p) => p.id === 'short')!
+    const deep = afterCall.players.find((p) => p.id === 'deep')!
+    assert.equal(short.stack, 0)
+    assert.equal(short.status, 'all-in')
+    assert.equal(short.betThisRound, 7)
+    assert.equal(short.betThisHand, 7)
+    assert.equal(short.roundAction, 'Call all-in 2')
+    assert.equal(afterCall.actionSeat, deep.seat)
+    assert.equal(afterCall.currentBet - deep.betThisRound, 0)
+    assert.equal(chipTotal(table), startTotal)
+
+    act(table, 'deep', { type: 'check' })
+    const flop = table.getState()
+    assert.equal(flop.actionSeat, null)
+    assert.equal(flop.board.length, 3)
+    assert.equal(table.isRunoutPending(), true)
+    assert.equal(chipTotal(table), startTotal)
+  })
+
+  it('treats 3-way postflop short-stack call as side-pot all-in', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'A', seat: 0, stack: 500 },
+        { id: 'B', seat: 1, stack: 25 },
+        { id: 'C', seat: 2, stack: 500 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 2,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    const startStacks = 500 + 25 + 500
+
+    act(table, 'A', { type: 'call' })
+    act(table, 'B', { type: 'call' })
+    act(table, 'C', { type: 'check' })
+
+    const flopStart = table.getState()
+    assert.equal(flopStart.bettingRound, 'flop')
+    assert.equal(flopStart.actionSeat, 1)
+    const shortBefore = flopStart.players.find((p) => p.id === 'B')!
+    assert.equal(shortBefore.stack, 15)
+    assert.equal(chipTotal(table), startStacks)
+
+    act(table, 'B', { type: 'check' })
+    act(table, 'C', { type: 'bet', total: 30 })
+    act(table, 'A', { type: 'call' })
+    const facingCall = table.getState()
+    const shortFacing = facingCall.players.find((p) => p.id === 'B')!
+    assert.equal(facingCall.actionSeat, shortFacing.seat)
+    assert.equal(facingCall.currentBet - shortFacing.betThisRound, 30)
+    assert.equal(shortFacing.stack, 15)
+
+    const r = table.applyAction('B', { type: 'call' })
+    assert.equal(r.ok, true, r.error)
+
+    const turn = table.getState()
+    const short = turn.players.find((p) => p.id === 'B')!
+    const activeDeep = turn.players.filter(
+      (p) => p.status === 'active' && p.stack > 0,
+    )
+    assert.equal(short.stack, 0)
+    assert.equal(short.status, 'all-in')
+    assert.equal(short.betThisHand, 25)
+    assert.equal(activeDeep.length, 2)
+    assert.equal(turn.bettingRound, 'turn')
+    assert.notEqual(turn.actionSeat, short.seat)
+    assert.equal(table.isRunoutPending(), false)
+    assert.equal(chipTotal(table), startStacks)
+
+    for (let i = 0; i < 20; i++) {
+      const s = table.getState()
+      if (s.handComplete) break
+      if (s.actionSeat === null) break
+      const actor = s.players.find((p) => p.seat === s.actionSeat)!
+      const toCall = s.currentBet - actor.betThisRound
+      if (toCall > 0) act(table, actor.id, { type: 'call' })
+      else act(table, actor.id, { type: 'check' })
+    }
+
+    const end = table.getState()
+    assert.equal(end.handComplete, true)
+    assert.equal(end.bettingRound, 'showdown')
+    assert.equal(end.board.length, 5)
+    assert.deepEqual(
+      end.pots.map((p) => p.amount),
+      [75, 30],
+    )
+    assert.deepEqual(end.pots[0]!.eligible.sort(), ['A', 'B', 'C'])
+    assert.deepEqual(end.pots[1]!.eligible.sort(), ['A', 'C'])
+    const endStacks = end.players.reduce((n, p) => n + p.stack, 0)
+    assert.equal(endStacks, startStacks)
+  })
+
+  it('keeps a covered call as a normal call', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'caller', seat: 0, stack: 100 },
+        { id: 'bb', seat: 1, stack: 100 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 1,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    const startTotal = chipTotal(table)
+
+    const r = table.applyAction('caller', { type: 'call' })
+    assert.equal(r.ok, true, r.error)
+
+    const s = table.getState()
+    const caller = s.players.find((p) => p.id === 'caller')!
+    assert.equal(caller.stack, 90)
+    assert.equal(caller.status, 'active')
+    assert.equal(caller.betThisRound, 10)
+    assert.equal(caller.betThisHand, 10)
+    assert.equal(caller.roundAction, 'Call 5')
+    assert.equal(chipTotal(table), startTotal)
+  })
+
+  it('keeps explicit all-in action working', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'jammer', seat: 0, stack: 100 },
+        { id: 'caller', seat: 1, stack: 200 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 1,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    const startTotal = chipTotal(table)
+
+    act(table, 'jammer', { type: 'all-in' })
+    const jam = table.getState()
+    const jammer = jam.players.find((p) => p.id === 'jammer')!
+    assert.equal(jammer.stack, 0)
+    assert.equal(jammer.status, 'all-in')
+    assert.equal(jammer.betThisHand, 100)
+    assert.equal(jammer.roundAction, 'All-in')
+
+    act(table, 'caller', { type: 'call' })
+    assert.equal(table.isRunoutPending(), true)
+    assert.equal(chipTotal(table), startTotal)
+  })
+
+  it('does not lock runout after a partial call while two players can still act', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'A', seat: 0, stack: 500 },
+        { id: 'B', seat: 1, stack: 25 },
+        { id: 'C', seat: 2, stack: 500 },
+        { id: 'D', seat: 3, stack: 500 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 3,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    const startTotal = chipTotal(table)
+
+    act(table, 'D', { type: 'call' })
+    act(table, 'A', { type: 'call' })
+    act(table, 'B', { type: 'call' })
+    act(table, 'C', { type: 'check' })
+
+    assert.equal(table.getState().bettingRound, 'flop')
+    act(table, 'B', { type: 'check' })
+    act(table, 'C', { type: 'bet', total: 30 })
+    act(table, 'D', { type: 'call' })
+    act(table, 'A', { type: 'call' })
+    act(table, 'B', { type: 'call' })
+
+    const turn = table.getState()
+    const short = turn.players.find((p) => p.id === 'B')!
+    assert.equal(short.status, 'all-in')
+    assert.equal(short.stack, 0)
+    assert.equal(
+      turn.players.filter((p) => p.status === 'active' && p.stack > 0).length,
+      3,
+    )
+    assert.equal(turn.bettingRound, 'turn')
+    assert.notEqual(turn.actionSeat, null)
+    assert.equal(table.isRunoutPending(), false)
+    assert.equal(chipTotal(table), startTotal)
+  })
+})
+
 describe('HoldemTable locked runout', () => {
   it('3-way locked runout: no action for lone active after short stack all-ins', () => {
     const table = threeWayLockedRunoutTable()
@@ -329,6 +584,135 @@ describe('HoldemTable locked runout', () => {
     assert.equal(table.isRunoutPending(), false)
   })
 
+  it('3-way postflop skips all-in button when choosing action seat', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'A', seat: 0, stack: 500 },
+        { id: 'B', seat: 1, stack: 20 },
+        { id: 'C', seat: 2, stack: 500 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 0,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    act(table, 'B', { type: 'all-in' })
+    act(table, 'C', { type: 'call' })
+    act(table, 'A', { type: 'call' })
+
+    const flop = table.getState()
+    assert.equal(flop.bettingRound, 'flop')
+    assert.equal(flop.board.length, 3)
+    assert.equal(flop.handComplete, false)
+    assertValidCheckAction(table, 'B', 'flop')
+  })
+
+  it('4-6-way postflop skips all-in button with two active players', () => {
+    for (const n of [4, 5, 6]) {
+      const players = Array.from({ length: n }, (_, i) => ({
+        id: String.fromCharCode(65 + i),
+        seat: i,
+        stack: i === 0 || i === 2 ? 500 : 20,
+      }))
+      const table = new HoldemTable({
+        players,
+        smallBlind: 5,
+        bigBlind: 10,
+        buttonSeat: 0,
+        shuffle: () => createDeck(),
+      })
+
+      driveAllInButtonToFlop(table, new Set(['A', 'C']))
+
+      const flop = table.getState()
+      assert.equal(flop.bettingRound, 'flop', `n=${n}`)
+      assert.equal(flop.board.length, 3, `n=${n}`)
+      assert.equal(
+        flop.players.filter((p) => p.status === 'active' && p.stack > 0).length,
+        2,
+        `n=${n}`,
+      )
+      assertValidCheckAction(table, 'B', 'flop')
+    }
+  })
+
+  it('postflop wraps past non-seat-1 all-in button when choosing action seat', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'A', seat: 0, stack: 500 },
+        { id: 'B', seat: 1, stack: 20 },
+        { id: 'C', seat: 2, stack: 500 },
+        { id: 'D', seat: 3, stack: 20 },
+        { id: 'E', seat: 4, stack: 20 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 3,
+      shuffle: () => createDeck(),
+    })
+
+    driveAllInButtonToFlop(table, new Set(['A', 'C']))
+
+    const flop = table.getState()
+    const allInButton = flop.players.find((p) => p.id === 'E')!
+    assert.equal(flop.buttonSeat, allInButton.seat)
+    assert.equal(allInButton.seat, 4)
+    assert.equal(flop.bettingRound, 'flop')
+    assert.equal(flop.board.length, 3)
+    assert.equal(
+      flop.players.filter((p) => p.status === 'active' && p.stack > 0).length,
+      2,
+    )
+    assertValidCheckAction(table, 'E', 'flop')
+  })
+
+  it('later postflop streets skip all-in button', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'A', seat: 0, stack: 500 },
+        { id: 'B', seat: 1, stack: 50 },
+        { id: 'C', seat: 2, stack: 500 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 0,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    act(table, 'B', { type: 'call' })
+    act(table, 'C', { type: 'call' })
+    act(table, 'A', { type: 'check' })
+
+    assert.equal(table.getState().bettingRound, 'flop')
+    for (let i = 0; i < 20; i++) {
+      const s = table.getState()
+      if (s.bettingRound !== 'flop' || s.handComplete || s.actionSeat === null) break
+      const actor = s.players.find((p) => p.seat === s.actionSeat)!
+      const toCall = s.currentBet - actor.betThisRound
+      if (actor.id === 'B') act(table, 'B', { type: 'all-in' })
+      else if (toCall > 0) act(table, actor.id, { type: 'call' })
+      else act(table, actor.id, { type: 'check' })
+    }
+
+    assertValidCheckAction(table, 'B', 'turn')
+    for (let i = 0; i < 20; i++) {
+      const s = table.getState()
+      if (s.bettingRound !== 'turn' || s.handComplete || s.actionSeat === null) break
+      const actor = s.players.find((p) => p.seat === s.actionSeat)!
+      const toCall = s.currentBet - actor.betThisRound
+      if (toCall > 0) act(table, actor.id, { type: 'call' })
+      else act(table, actor.id, { type: 'check' })
+    }
+
+    const river = table.getState()
+    assert.notEqual(river.bettingRound, 'turn')
+    assert.notEqual(
+      river.handComplete === false && river.actionSeat === null && !table.isRunoutPending(),
+      true,
+    )
+  })
+
   it('conserves chips through locked runout and showdown', () => {
     const table = threeWayLockedRunoutTable()
     const startTotal = 200 + 50 + 50
@@ -343,6 +727,52 @@ describe('HoldemTable locked runout', () => {
     assert.equal(end.handComplete, true)
     const endTotal = end.players.reduce((n, p) => n + p.stack, 0)
     assert.equal(endTotal, startTotal)
+  })
+
+  it('turn-close locked runout deals river and completes showdown', () => {
+    const table = new HoldemTable({
+      players: [
+        { id: 'A', seat: 0, stack: 500 },
+        { id: 'B', seat: 1, stack: 200 },
+        { id: 'C', seat: 2, stack: 200 },
+        { id: 'D', seat: 3, stack: 200 },
+      ],
+      smallBlind: 5,
+      bigBlind: 10,
+      buttonSeat: 0,
+      shuffle: () => createDeck(),
+    })
+    table.startHand()
+    driveCheapPreflop(table)
+    for (let i = 0; i < 60; i++) {
+      const s = table.getState()
+      if (s.bettingRound !== 'flop' || s.handComplete || s.actionSeat === null) break
+      const actor = s.players.find((p) => p.seat === s.actionSeat)!
+      const toCall = s.currentBet - actor.betThisRound
+      if (toCall > 0) act(table, actor.id, { type: 'call' })
+      else act(table, actor.id, { type: 'check' })
+    }
+    const turnStart = table.getState()
+    assert.equal(turnStart.bettingRound, 'turn')
+    assert.equal(turnStart.board.length, 4)
+    for (let i = 0; i < 60; i++) {
+      const s = table.getState()
+      if (s.bettingRound !== 'turn' || s.handComplete || s.actionSeat === null) break
+      const actor = s.players.find((p) => p.seat === s.actionSeat)!
+      if (actor.id === 'B') act(table, 'B', { type: 'fold' })
+      else if (actor.id === 'C' || actor.id === 'D') act(table, actor.id, { type: 'all-in' })
+      else if (actor.id === 'A') {
+        const toCall = s.currentBet - actor.betThisRound
+        if (toCall > 0) act(table, 'A', { type: 'call' })
+        else act(table, 'A', { type: 'check' })
+      }
+    }
+    const end = table.getState()
+    assert.equal(end.board.length, 5)
+    assert.equal(end.handComplete, true)
+    assert.equal(end.bettingRound, 'showdown')
+    assert.ok(end.winners.length >= 1)
+    assert.equal(table.isRunoutPending(), false)
   })
 
   it('advanceRunout fails when no runout pending', () => {

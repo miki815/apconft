@@ -8,7 +8,7 @@ import {
   type VersionedTransactionResponse,
 } from '@solana/web3.js'
 import { TABLE_VAULT_PROGRAM_ID } from './config.js'
-import { PokerRoom, SHOWDOWN_MS } from './room.js'
+import { PokerRoom, SHOWDOWN_MS, type RoomSnapshot } from './room.js'
 import { verifyTableVaultTx, type TableVaultIx } from './vaultTx.js'
 import { loadVaultIdl } from './vaultBalance.js'
 
@@ -1297,30 +1297,54 @@ describe('PokerRoom rebuy grace', () => {
 describe('PokerRoom locked runout', () => {
   it('staged runout broadcasts board growth 3 to 4 to 5', async () => {
     const room = new PokerRoom('test', fastRunout)
-    const seen = new Set<number>()
+    const seenBoardLengths = new Set<number>()
+    const snapshots: RoomSnapshot[] = []
     room.onTableUpdate = () => {
-      const len = room.snapshot().state?.board.length ?? 0
-      if (len > 0) seen.add(len)
+      const snap = room.snapshot()
+      snapshots.push(snap)
+      const len = snap.state?.board.length ?? 0
+      if (len > 0) seenBoardLengths.add(len)
     }
 
     await driveThreeWayLockedRunout(room)
-    seen.add(room.snapshot().state!.board.length)
+    seenBoardLengths.add(room.snapshot().state!.board.length)
 
-    const deadline = Date.now() + 2000
-    while (Date.now() < deadline) {
-      const snap = room.snapshot()
-      if (snap.showdownActive || snap.state?.handComplete) break
-      await sleep(30)
-      await flushTimers()
+    await waitForRunoutTimer()
+    await waitForRunoutTimer()
+
+    if (room.snapshot().resultKind === null) {
+      assert.fail('resultKind still null after 2× waitForRunoutTimer')
     }
 
-    assert.ok(seen.has(3))
-    assert.ok(seen.has(4))
-    assert.ok(seen.has(5))
+    assert.ok(seenBoardLengths.has(3))
+    assert.ok(seenBoardLengths.has(4))
+    assert.ok(seenBoardLengths.has(5))
+
+    const board5Emits = snapshots.filter((s) => s.state?.board.length === 5)
+    assert.equal(board5Emits.length, 1)
+
+    const terminal = board5Emits[0]!
+    assert.equal(terminal.state!.handComplete, true)
+    assert.equal(terminal.resultKind, 'showdown')
+    assert.ok(terminal.showdownEndsAt)
+    assert.equal(terminal.resultDurationMs, SHOWDOWN_MS)
+    assert.ok(terminal.state!.winners.length >= 1)
+    assert.ok(terminal.state!.winners.every((w) => w.handRank))
+
+    for (const snap of snapshots) {
+      if (snap.state?.handComplete) {
+        assert.notEqual(snap.resultKind, null)
+        assert.ok(snap.showdownEndsAt)
+        assert.equal(snap.resultDurationMs, SHOWDOWN_MS)
+      }
+    }
+
     const result = room.snapshot()
     assert.equal(result.resultKind, 'showdown')
     assert.ok(result.showdownEndsAt)
     assert.equal(room.youState('a').canAct, false)
+
+    forceFinishResultDisplay(room)
   })
 
   it('you.canAct is false for lone active player during runout', async () => {

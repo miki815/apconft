@@ -532,13 +532,13 @@ export class PokerRoom {
     const r = this.table.advanceRunout()
     if (!r.ok) return
 
-    this.onTableUpdate?.()
-
     if (r.state.handComplete) {
       this.clearRunoutTimer()
       this.beginResultDisplay(this.table.isShowdownReveal() ? 'showdown' : 'fold')
       return
     }
+
+    this.onTableUpdate?.()
 
     if (this.table.isRunoutPending()) {
       this.scheduleRunoutStep()

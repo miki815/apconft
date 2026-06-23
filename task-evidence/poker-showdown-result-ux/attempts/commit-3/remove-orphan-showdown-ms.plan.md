@@ -4,7 +4,7 @@
 
 Uklanjanje neiskorišćene frontend `SHOWDOWN_MS` konstante iz `showdown.ts`.
 
-Interim evidence za commit-3 u okviru Task 9 MR-a.
+Interim evidence za commit-3 u okviru showdown result UX MR-a.
 
 ## Branch / Git context
 
@@ -31,7 +31,7 @@ Helper funkcije `isResultDisplayActive()` i `isShowdownPhase()` ostale nepromenj
 
 ### Frontend — uklonjeno
 
-- Orphan export u `showdown.ts` — nije bio importovan u aktivnom frontend kodu posle Task 9 commit-1
+- Orphan export u `showdown.ts` — nije bio importovan u aktivnom frontend kodu posle showdown result UX commit-1
 
 ### Server — netaknuto
 
@@ -88,7 +88,7 @@ npm run build --prefix solana/web
 chore(web): ukloni neiskorišćenu frontend SHOWDOWN_MS konstantu
 
 Uklonjena je orphan konstanta iz showdown.ts koja više nije korišćena
-posle server-sinhronizovanog countdown-a u Task 9.
+posle server-sinhronizovanog countdown-a u showdown result UX.
 
 Provere:
 npm run build --prefix solana/web — PASS

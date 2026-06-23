@@ -1,6 +1,6 @@
-# Commit-4 — Smooth countdown bar (#8)
+# Commit-4 — Smooth countdown bar
 
-**Task:** Task 9 MR — poker showdown result UX  
+**Task:** showdown result UX MR  
 **Branch:** `feature/poker-showdown-result-ux`  
 **Scope:** samo [`solana/web/src/poker/ShowdownBar.tsx`](../../../../solana/web/src/poker/ShowdownBar.tsx)
 
@@ -78,10 +78,10 @@ Cleanup: `cancelled` flag + `cancelAnimationFrame(rafId)` — obavezno zbog `<Re
 
 ## Završni rezultat implementacije
 
-**Commit-4 (#8) spreman za commit:** frontend build PASS; manual QA PASS 5/5; scope ispunjen (`ShowdownBar.tsx` only). Poker unit testovi nisu pokretani jer poker paket nije menjan.
+**Commit-4 spreman za commit:** frontend build PASS; manual QA PASS 5/5; scope ispunjen (`ShowdownBar.tsx` only). Poker unit testovi nisu pokretani jer poker paket nije menjan.
 
 ## Rizici (preostali)
 
-- Clock skew server ↔ klijent (#16, deferred)
+- Clock skew server ↔ klijent (deferred future task)
 - Background tab: rAF pauziran (MDN) — bar stoji dok je tab skriven; pri povratku `Date.now()` ispravi remaining
 - StrictMode dev: dupli setup/cleanup — mitigovan sa `cancelled` + `cancelAnimationFrame`

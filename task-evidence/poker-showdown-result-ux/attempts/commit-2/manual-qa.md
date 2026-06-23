@@ -1,6 +1,6 @@
 # Manual QA — poker-showdown-final-runout-update-fix (commit-2)
 
-Task: Task 9 commit-2 — final staged-runout terminal snapshot fix
+Task: showdown result UX commit-2 — final staged-runout terminal snapshot fix
 Branch/task name: `feature/poker-showdown-result-ux`
 Status: PASS
 Date: 2026-06-22
@@ -30,7 +30,7 @@ Result: **PASS**
 **Očekivano i stvarno ponašanje:**
 
 - Board prikazan **3 → 4 → 5** sa vidljivim pauzama između ulica (~`RUNOUT_STREET_MS`)
-- Posle rivera: odmah result panel, winner, rank i countdown — bez perioda bez Task 9 UI
+- Posle rivera: odmah result panel, winner, rank i countdown — bez perioda bez showdown result UX UI
 - Oba profila vide isti board, winner, rank i countdown
 - Posle countdown-a (~5s): cleanup result UI i auto-next ruka
 
@@ -80,7 +80,6 @@ Result: **PASS**
 
 ## Known residual risks / out of scope
 
-- **Countdown copy:** promena teksta u „Nastavak za Ns“ je posebna buduća dorada (#7), van commit-2 scope-a.
 - **Vault E2E:** ovaj QA nije pokrenuo pravi on-chain lock/release flow (skip flagovi uključeni).
 - **Reconnect:** nije eksplicitno testiran u ovom manual QA setu.
 - **Pravi Phantom/Vault flow** za staged runout: nije pokriven ovim QA korakom.

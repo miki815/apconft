@@ -28,7 +28,7 @@ isProject: false
 
 - **Branch:** `feature/poker-showdown-result-ux`
 - **Base:** `fix/poker-short-stack-call-becomes-all-in`
-- **Commit-1 osnova:** `007573f` (Task 9 result UX) — **ne amendovati**
+- **Commit-1 osnova:** `007573f` (showdown result UX) — **ne amendovati**
 - **Ovaj fix:** novi **commit-2** na istom MR-u (kasniji, odvojen korak)
 - **Interim evidence commit-1 (read-only):** `task-evidence/poker-showdown-result-ux/attempts/commit-1/`
 - **Interim evidence commit-2:** `task-evidence/poker-showdown-result-ux/attempts/commit-2/`
@@ -55,7 +55,7 @@ if (r.state.handComplete) {
 
 Na **poslednjem** staged runout koraku (river, board 4→5 + engine `showdown()`):
 
-| Broadcast | board | handComplete | resultKind | showdownEndsAt | resultDurationMs | Task 9 UI |
+| Broadcast | board | handComplete | resultKind | showdownEndsAt | resultDurationMs | showdown result UX UI |
 |-----------|-------|--------------|------------|----------------|------------------|-----------|
 | 1. iz `onTableUpdate()` | 5 | true | null | null | null | **Nedostaje** result panel, winner highlight, countdown |
 | 2. iz `beginResultDisplay()` | 5 | true | showdown | set | SHOWDOWN_MS | Kompletan |
@@ -70,25 +70,25 @@ Nepotpun **prvi** terminalni snapshot **već može imati**:
 - `winners` i `handRank` (engine `showdown()`)
 - revealed hole cards (`showdownReveal=true` u engine state-u)
 
-Ali **nema Task 9 metadata**:
+Ali **nema showdown result UX metadata**:
 
 - `resultKind=null`
 - `showdownEndsAt=null`
 - `resultDurationMs=null`
 
-Zato na klijentu posle Task 9 **nedostaju**:
+Zato na klijentu posle showdown result UX **nedostaju**:
 
 - result panel (`resultPhase` gate u [`showdown.ts`](solana/web/src/poker/showdown.ts))
 - winner seat highlight
 - countdown (`ShowdownBar`)
 
-Engine podaci mogu biti prisutni; **Task 9 result/countdown UI** nije.
+Engine podaci mogu biti prisutni; **showdown result UX result/countdown UI** nije.
 
-**Frontend posle Task 9:** `isResultDisplayActive()` zahteva `resultKind !== null && handComplete`.
+**Frontend posle showdown result UX:** `isResultDisplayActive()` zahteva `resultKind !== null && handComplete`.
 
 ---
 
-## Šta je postojalo pre Taska 9
+## Šta je postojalo pre showdown result UX
 
 **Provereno u Git istoriji** (`a5cd4b3`, `4d2df34`, blame):
 
@@ -96,7 +96,7 @@ Engine podaci mogu biti prisutni; **Task 9 result/countdown UI** nije.
 - `onRunoutStep()` od tada ima opšti obrazac: `onTableUpdate()` posle **svakog** `advanceRunout()`, uključujući poslednji korak.
 - Pre commit-1 poslednji korak šalje dva board=5 emit-a (drugi iz `beginShowdown()`).
 - Commit **`007573f`** uveo `beginResultDisplay()` + `resultKind`/`resultDurationMs`, ali **nije promenio redosled** u `onRunoutStep()`.
-- Pre Task 9 frontend je maskirao gap preko `localShowdownEndsAt` — uklonjeno u commit-1.
+- Pre showdown result UX frontend je maskirao gap preko `localShowdownEndsAt` — uklonjeno u commit-1.
 
 ---
 
@@ -139,7 +139,7 @@ Uklanjanje nepotpunog server snapshot-a **ne sprečava** budući frontend-delay 
 4. Dopuniti **samo** postojeći test `'staged runout broadcasts board growth 3 to 4 to 5'`.
 5. **Ne** dodavati nove HU ili 4–6 player room testove.
 6. **Ne** menjati frontend u ovom commit-u.
-7. Predvideti **oba** obavezna manual QA scenarija pre finalnog acceptance-a Task 9.
+7. Predvideti **oba** obavezna manual QA scenarija pre finalnog acceptance-a showdown result UX.
 
 ---
 
@@ -225,7 +225,7 @@ npm run poker:test
 - **Prijaviti tačan broj testova** iz stvarnog loga (npr. `98 passed`).
 - Ako pad nije očekivani staged-runout assertion → **STOP**, prijavi tačan test; **ne popravljaj** unrelated problem bez nove korisničke odluke.
 
-### 5. Manual QA (pre finalnog acceptance-a Task 9)
+### 5. Manual QA (pre finalnog acceptance-a showdown result UX)
 
 Oba scenarija iz sekcije Manual QA — **ne sada**, nego posle automatskih testova.
 
@@ -294,7 +294,7 @@ const board5Emits = snapshots.filter((s) => s.state?.board.length === 5)
 assert.equal(board5Emits.length, 1)
 ```
 
-**Prvi (i jedini) board=5 emit — kompletan Task 9 + engine terminalni contract:**
+**Prvi (i jedini) board=5 emit — kompletan showdown result UX + engine terminalni contract:**
 
 ```typescript
 const terminal = board5Emits[0]!
@@ -335,7 +335,7 @@ Frontend build **nije potreban** — fix je server-only.
 
 ---
 
-## Manual QA (obavezno pre finalnog acceptance-a Task 9)
+## Manual QA (obavezno pre finalnog acceptance-a showdown result UX)
 
 **Ne izvršavati u Plan fazi.** Zapisati tek posle stvarnog izvršenja; inače `NOT RUN`. Ne označavati PASS bez stvarnog QA.
 
@@ -366,7 +366,7 @@ Frontend build **nije potreban** — fix je server-only.
 **Proveriti:**
 
 - [ ] Board **3 → 4 → 5** sa vidljivim kašnjenjem između ulica (~`RUNOUT_STREET_MS` = 1200ms)
-- [ ] Posle rivera: odmah result panel, winner, rank, countdown — bez perioda bez Task 9 UI
+- [ ] Posle rivera: odmah result panel, winner, rank, countdown — bez perioda bez showdown result UX UI
 - [ ] **Oba** profila vide isti board, winner, rank i countdown
 - [ ] Posle ~5s: cleanup i auto-next
 
@@ -444,7 +444,7 @@ Frontend build **nije potreban** — fix je server-only.
 - [ ] Commit-2 tek na **eksplicitan korisnički zahtev** — **još nije commitovan**
 - [x] **Ne amendovati** `007573f`
 - [x] **Ne dirati** `task-evidence/poker-showdown-result-ux/attempts/commit-1/`
-- [ ] **Ne kreirati** finalni task evidence root pre korisničke potvrde celog Task 9
+- [ ] **Ne kreirati** finalni task evidence root pre korisničke potvrde celog showdown result UX
 - [x] Interim evidence commit-2: `task-evidence/poker-showdown-result-ux/attempts/commit-2/`
 
 ---
@@ -455,7 +455,7 @@ Frontend build **nije potreban** — fix je server-only.
 - **Commit-2** je kasniji, odvojen korak posle review-a i PASS testova.
 - **Ne amendovati** commit-1 (`007573f`).
 - **Ne dirati** interim evidence: `task-evidence/poker-showdown-result-ux/attempts/commit-1/`
-- **Ne kreirati** finalni evidence folder pre korisničke potvrde celog Task 9.
+- **Ne kreirati** finalni evidence folder pre korisničke potvrde celog showdown result UX.
 - Unrelated `npm run poker:test` pad: **STOP**, prijavi tačan test, **ne popravljaj** bez nove korisničke odluke.
 
 ---

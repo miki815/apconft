@@ -44,7 +44,7 @@ Result: **PASS**
 ## QA notes
 
 - Jedini obavezan manual smoke za commit-3: **PASS 1/1**
-- Cleanup ne menja runtime ponašanje — smoke potvrđuje da Task 9 result UX i dalje radi posle uklanjanja orphan konstante
+- Cleanup ne menja runtime ponašanje — smoke potvrđuje da showdown result UX i dalje radi posle uklanjanja orphan konstante
 - Pun Vault/Phantom lock-release flow **nije** testiran (skip flagovi uključeni)
 
 ## Known residual risks / out of scope

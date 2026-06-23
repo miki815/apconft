@@ -2,7 +2,7 @@
 
 ## Task
 
-Task 9: Rank ruke, pobednička ruka i countdown.
+Showdown result UX: rank ruke, pobednička ruka i countdown.
 
 Interim evidence za trenutnu osnovu (`commit-1`).
 
@@ -15,7 +15,7 @@ Interim evidence za trenutnu osnovu (`commit-1`).
 
 ## Final implemented scope (commit-1 basis)
 
-Implementirana osnova Taska 9 pokriva:
+Implementirana osnova showdown result UX pokriva:
 
 - Server-authoritative winner rank u `TableState.winners`
 - Additive WS contract: `resultKind`, `resultDurationMs`, postojeći `showdownEndsAt`

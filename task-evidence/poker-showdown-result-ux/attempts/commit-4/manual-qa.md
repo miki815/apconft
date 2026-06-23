@@ -1,4 +1,4 @@
-# Manual QA — Commit-4 (smooth countdown bar #8)
+# Manual QA — Commit-4 (smooth countdown bar)
 
 **Status:** PASS — korisnički potvrđeno  
 **Date prepared:** 2026-06-22  

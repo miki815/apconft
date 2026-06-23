@@ -1,6 +1,6 @@
 # Manual QA — poker-showdown-result-ux (commit-1 interim basis)
 
-Task: Task 9 — Rank ruke, pobednička ruka i countdown
+Task: showdown result UX — Rank ruke, pobednička ruka i countdown
 Branch/task name: `feature/poker-showdown-result-ux`
 Status: PARTIAL
 Executed scenarios: PASS
@@ -64,7 +64,7 @@ Result: PASS
 
 - Rezultat, winner, rank i countdown rade.
 - Svih 5 board karata pojavljuje se odjednom.
-- Provereno da je to postojeće očekivano engine ponašanje za HU oba-all-in, nije Task 9 regresija.
+- Provereno da je to postojeće očekivano engine ponašanje za HU oba-all-in, nije showdown result UX regresija.
 - Korisnik potvrđuje da ponašanje ostaje.
 
 ### 7. Mobilni/uzak prikaz sa dva igrača

@@ -1,0 +1,642 @@
+node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At C:\nvm4w\nodejs\npm.ps1:16 char:5
++     & "$basedir/node$exe"  "$basedir/node_modules/npm/bin/npm-cli.js" ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+> apconft@0.1.0 poker:test
+> npm test --prefix poker
+
+npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm help npmrc` 
+for supported config options.
+
+> @apconft/poker@0.1.0 test
+> node --import tsx --test src/hand-eval.test.ts src/pot.test.ts src/table.test.ts server/room.test.ts server/hub.test.ts
+
+TAP version 13
+# (node:4804) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: buildTableMessage
+    # Subtest: includes exact serverNow passed in
+    ok 1 - includes exact serverNow passed in
+      ---
+      duration_ms: 1.4998
+      ...
+    # Subtest: uses distinct serverNow values independently
+    ok 2 - uses distinct serverNow values independently
+      ---
+      duration_ms: 0.2222
+      ...
+    1..2
+ok 1 - buildTableMessage
+  ---
+  duration_ms: 3.7723
+  type: 'suite'
+  ...
+# (node:7896) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: verifyTableVaultTx retry
+    # Subtest: passes when a fresh transaction appears on retry
+    ok 1 - passes when a fresh transaction appears on retry
+      ---
+      duration_ms: 657.804
+      ...
+    # Subtest: returns not found after all retry attempts are exhausted
+    ok 2 - returns not found after all retry attempts are exhausted
+      ---
+      duration_ms: 3040.191
+      ...
+    1..2
+ok 2 - verifyTableVaultTx retry
+  ---
+  duration_ms: 3701.8155
+  type: 'suite'
+  ...
+# Subtest: PokerRoom
+    # Subtest: sit, start hand, fold wins
+    ok 1 - sit, start hand, fold wins
+      ---
+      duration_ms: 17.0272
+      ...
+    # Subtest: fold result keeps same deadline and per-player operation guards
+    ok 2 - fold result keeps same deadline and per-player operation guards
+      ---
+      duration_ms: 18.8252
+      ...
+    # Subtest: enters showdown phase with revealed cards
+    ok 3 - enters showdown phase with revealed cards
+      ---
+      duration_ms: 3.9516
+      ...
+    # Subtest: stand clears seat without vault tx when skip enabled
+    ok 4 - stand clears seat without vault tx when skip enabled
+      ---
+      duration_ms: 1.3657
+      ...
+    # Subtest: checkSit rejects taken seat before lock
+    ok 5 - checkSit rejects taken seat before lock
+      ---
+      duration_ms: 1.0173
+      ...
+    # Subtest: busted player enters rebuy grace after hand ends
+    ok 6 - busted player enters rebuy grace after hand ends
+      ---
+      duration_ms: 4.1113
+      ...
+    # Subtest: busted player is removed after rebuy timer expires
+    ok 7 - busted player is removed after rebuy timer expires
+      ---
+      duration_ms: 105.9174
+      ...
+    # Subtest: first sit does not auto-start
+    ok 8 - first sit does not auto-start
+      ---
+      duration_ms: 0.9255
+      ...
+    # Subtest: second sit auto-starts hand
+    ok 9 - second sit auto-starts hand
+      ---
+      duration_ms: 1.1645
+      ...
+    # Subtest: manual startHand after auto-start rejects duplicate
+    ok 10 - manual startHand after auto-start rejects duplicate
+      ---
+      duration_ms: 0.7258
+      ...
+    # Subtest: third sit allowed while auto-next hand runs
+    ok 11 - third sit allowed while auto-next hand runs
+      ---
+      duration_ms: 0.7181
+      ...
+    # Subtest: auto-starts next hand after fold with two seated
+    ok 12 - auto-starts next hand after fold with two seated
+      ---
+      duration_ms: 1.9511
+      ...
+    # Subtest: does not auto-start next hand when one seated remains
+    ok 13 - does not auto-start next hand when one seated remains
+      ---
+      duration_ms: 1.4615
+      ...
+    # Subtest: manual startHand after auto-next rejects duplicate
+    ok 14 - manual startHand after auto-next rejects duplicate
+      ---
+      duration_ms: 1.6639
+      ...
+    # Subtest: failed sit does not auto-start
+    ok 15 - failed sit does not auto-start
+      ---
+      duration_ms: 0.5296
+      ...
+    1..15
+ok 3 - PokerRoom
+  ---
+  duration_ms: 163.5297
+  type: 'suite'
+  ...
+# Subtest: PokerRoom waiting sit
+    # Subtest: allows sit during active hand without joining current HoldemTable
+    ok 1 - allows sit during active hand without joining current HoldemTable
+      ---
+      duration_ms: 0.6767
+      ...
+    # Subtest: youState for waiting player has seat but no cards or action
+    ok 2 - youState for waiting player has seat but no cards or action
+      ---
+      duration_ms: 0.7913
+      ...
+    # Subtest: waiting player enters next hand after auto-next
+    ok 3 - waiting player enters next hand after auto-next
+      ---
+      duration_ms: 0.9443
+      ...
+    # Subtest: third sit mid-hand does not change current hand player count
+    ok 4 - third sit mid-hand does not change current hand player count
+      ---
+      duration_ms: 0.4955
+      ...
+    # Subtest: checkSit rejects taken seat and already seated during active hand
+    ok 5 - checkSit rejects taken seat and already seated during active hand
+      ---
+      duration_ms: 0.4569
+      ...
+    # Subtest: allows sit during showdown display without joining current hand
+    ok 6 - allows sit during showdown display without joining current hand
+      ---
+      duration_ms: 1.395
+      ...
+    # Subtest: rejects applyAction from waiting player
+    ok 7 - rejects applyAction from waiting player
+      ---
+      duration_ms: 1.0116
+      ...
+    1..7
+ok 4 - PokerRoom waiting sit
+  ---
+  duration_ms: 6.2295
+  type: 'suite'
+  ...
+# Subtest: PokerRoom action timeout
+    # Subtest: auto-checks when toCall is 0 and timeout expires
+    ok 1 - auto-checks when toCall is 0 and timeout expires
+      ---
+      duration_ms: 76.8138
+      ...
+    # Subtest: auto-folds when toCall is positive and timeout expires
+    ok 2 - auto-folds when toCall is positive and timeout expires
+      ---
+      duration_ms: 31.4283
+      ...
+    # Subtest: resets timer after manual action
+    ok 3 - resets timer after manual action
+      ---
+      duration_ms: 93.1878
+      ...
+    # Subtest: clears timer when hand ends by fold
+    ok 4 - clears timer when hand ends by fold
+      ---
+      duration_ms: 78.3914
+      ...
+    # Subtest: does not act during showdown display
+    ok 5 - does not act during showdown display
+      ---
+      duration_ms: 79.3519
+      ...
+    # Subtest: auto-start and auto-next still work with action timer enabled
+    ok 6 - auto-start and auto-next still work with action timer enabled
+      ---
+      duration_ms: 0.6984
+      ...
+    # Subtest: does not double-act when player already acted manually
+    ok 7 - does not double-act when player already acted manually
+      ---
+      duration_ms: 156.4098
+      ...
+    # Subtest: stale seq guard ignores superseded timeout callback
+    ok 8 - stale seq guard ignores superseded timeout callback
+      ---
+      duration_ms: 94.0992
+      ...
+    1..8
+ok 5 - PokerRoom action timeout
+  ---
+  duration_ms: 611.2322
+  type: 'suite'
+  ...
+# Subtest: PokerRoom add chips
+    # Subtest: addChips when no hand increases stack immediately
+    ok 1 - addChips when no hand increases stack immediately
+      ---
+      duration_ms: 0.4358
+      ...
+    # Subtest: addChips during active hand does not change engine stack
+    ok 2 - addChips during active hand does not change engine stack
+      ---
+      duration_ms: 0.4704
+      ...
+    # Subtest: pending add applies on next hand after finishHand
+    ok 3 - pending add applies on next hand after finishHand
+      ---
+      duration_ms: 0.5793
+      ...
+    # Subtest: two addChips during same hand accumulate pending
+    ok 4 - two addChips during same hand accumulate pending
+      ---
+      duration_ms: 0.3844
+      ...
+    # Subtest: applyPendingStackAdds is idempotent
+    ok 5 - applyPendingStackAdds is idempotent
+      ---
+      duration_ms: 0.3635
+      ...
+    # Subtest: checkAddChips rejects invalid cases
+    ok 6 - checkAddChips rejects invalid cases
+      ---
+      duration_ms: 0.2292
+      ...
+    # Subtest: busted player with pending add stays seated after hand
+    ok 7 - busted player with pending add stays seated after hand
+      ---
+      duration_ms: 1.2887
+      ...
+    # Subtest: syncStacksFromTable preserves pendingStackAdd
+    ok 8 - syncStacksFromTable preserves pendingStackAdd
+      ---
+      duration_ms: 0.7185
+      ...
+    # Subtest: snapshot seats expose only public fields
+    ok 9 - snapshot seats expose only public fields
+      ---
+      duration_ms: 0.6511
+      ...
+    # Subtest: waiting player addChips during hand enters next hand with top-up
+    ok 10 - waiting player addChips during hand enters next hand with top-up
+      ---
+      duration_ms: 0.6744
+      ...
+    1..10
+ok 6 - PokerRoom add chips
+  ---
+  duration_ms: 6.2608
+  type: 'suite'
+  ...
+# Subtest: PokerRoom releasableStack stand
+    # Subtest: T1: waiting sit + add-chips during hand + stand includes pendingStackAdd
+    ok 1 - T1: waiting sit + add-chips during hand + stand includes pendingStackAdd
+      ---
+      duration_ms: 0.5287
+      ...
+    # Subtest: T2: stand without pending uses stack only
+    ok 2 - T2: stand without pending uses stack only
+      ---
+      duration_ms: 0.2602
+      ...
+    # Subtest: T3: add-chips between hands then releasable equals stack
+    ok 3 - T3: add-chips between hands then releasable equals stack
+      ---
+      duration_ms: 0.3875
+      ...
+    # Subtest: T4: HU largest stack releasableStack after all-in matches seat stack
+    ok 4 - T4: HU largest stack releasableStack after all-in matches seat stack
+      ---
+      duration_ms: 0.754
+      ...
+    # Subtest: T5: busted loser releasableStack is zero
+    ok 5 - T5: busted loser releasableStack is zero
+      ---
+      duration_ms: 0.712
+      ...
+    1..5
+ok 7 - PokerRoom releasableStack stand
+  ---
+  duration_ms: 2.8914
+  type: 'suite'
+  ...
+# Subtest: PokerRoom rebuy grace
+    # Subtest: grace deadline is approximately now + rebuyGraceMs
+    ok 1 - grace deadline is approximately now + rebuyGraceMs
+      ---
+      duration_ms: 1.9713
+      ...
+    # Subtest: rebuy before expiry keeps player seated with cleared grace
+    ok 2 - rebuy before expiry keeps player seated with cleared grace
+      ---
+      duration_ms: 1.4104
+      ...
+    # Subtest: player with zero stack in grace is excluded from startHand players
+    ok 3 - player with zero stack in grace is excluded from startHand players
+      ---
+      duration_ms: 0.9013
+      ...
+    # Subtest: does not auto-start when only one eligible player
+    ok 4 - does not auto-start when only one eligible player
+      ---
+      duration_ms: 1.5771
+      ...
+    # Subtest: three players bust one continues hand without busted player
+    ok 5 - three players bust one continues hand without busted player
+      ---
+      duration_ms: 0.5519
+      ...
+    # Subtest: rebuy addChips during others hand applies immediately
+    ok 6 - rebuy addChips during others hand applies immediately
+      ---
+      duration_ms: 109.008
+      ...
+    # Subtest: stand during grace clears seat without hand block
+    ok 7 - stand during grace clears seat without hand block
+      ---
+      duration_ms: 0.5916
+      ...
+    # Subtest: youState exposes rebuyDeadlineAt for busted player
+    ok 8 - youState exposes rebuyDeadlineAt for busted player
+      ---
+      duration_ms: 0.5697
+      ...
+    # Subtest: timer does not kick player with stack after rebuy
+    ok 9 - timer does not kick player with stack after rebuy
+      ---
+      duration_ms: 107.4254
+      ...
+    # Subtest: rebuy success with two eligible may auto-start next hand
+    ok 10 - rebuy success with two eligible may auto-start next hand
+      ---
+      duration_ms: 1.2054
+      ...
+    # Subtest: pendingStackAdd before grace prevents grace entry
+    ok 11 - pendingStackAdd before grace prevents grace entry
+      ---
+      duration_ms: 0.8771
+      ...
+    1..11
+ok 8 - PokerRoom rebuy grace
+  ---
+  duration_ms: 226.7719
+  type: 'suite'
+  ...
+# Subtest: PokerRoom locked runout
+    # Subtest: staged runout broadcasts board growth 3 to 4 to 5
+    ok 1 - staged runout broadcasts board growth 3 to 4 to 5
+      ---
+      duration_ms: 214.987
+      ...
+    # Subtest: you.canAct is false for lone active player during runout
+    ok 2 - you.canAct is false for lone active player during runout
+      ---
+      duration_ms: 0.6456
+      ...
+    # Subtest: rejects applyAction from lone active player during runout
+    ok 3 - rejects applyAction from lone active player during runout
+      ---
+      duration_ms: 0.5264
+      ...
+    1..3
+ok 9 - PokerRoom locked runout
+  ---
+  duration_ms: 216.3756
+  type: 'suite'
+  ...
+# Subtest: hand-eval
+    # Subtest: ranks pair above high card
+    ok 1 - ranks pair above high card
+      ---
+      duration_ms: 3.5508
+      ...
+    # Subtest: ranks flush above straight
+    ok 2 - ranks flush above straight
+      ---
+      duration_ms: 1.4794
+      ...
+    # Subtest: detects wheel straight
+    ok 3 - detects wheel straight
+      ---
+      duration_ms: 4.7977
+      ...
+    # Subtest: detects straight flush
+    ok 4 - detects straight flush
+      ---
+      duration_ms: 0.6151
+      ...
+    # Subtest: splits tie on same full house
+    ok 5 - splits tie on same full house
+      ---
+      duration_ms: 2.2578
+      ...
+    1..5
+ok 10 - hand-eval
+  ---
+  duration_ms: 35.7152
+  type: 'suite'
+  ...
+# Subtest: pot
+    # Subtest: builds main and side pot
+    ok 1 - builds main and side pot
+      ---
+      duration_ms: 4.4425
+      ...
+    # Subtest: excludes folded from eligibility
+    ok 2 - excludes folded from eligibility
+      ---
+      duration_ms: 0.5054
+      ...
+    # Subtest: splits remainder chip
+    ok 3 - splits remainder chip
+      ---
+      duration_ms: 0.9343
+      ...
+    1..3
+ok 11 - pot
+  ---
+  duration_ms: 8.7167
+  type: 'suite'
+  ...
+# Subtest: HoldemTable
+    # Subtest: posts blinds and deals hole cards
+    ok 1 - posts blinds and deals hole cards
+      ---
+      duration_ms: 4.5702
+      ...
+    # Subtest: awards pot on preflop fold
+    ok 2 - awards pot on preflop fold
+      ---
+      duration_ms: 3.1837
+      ...
+    # Subtest: runs hand to showdown with checks
+    ok 3 - runs hand to showdown with checks
+      ---
+      duration_ms: 4.9269
+      ...
+    # Subtest: board-play split winners share the same handRank
+    ok 4 - board-play split winners share the same handRank
+      ---
+      duration_ms: 7.1568
+      ...
+    # Subtest: rejects check when facing bet
+    ok 5 - rejects check when facing bet
+      ---
+      duration_ms: 1.0588
+      ...
+    1..5
+ok 12 - HoldemTable
+  ---
+  duration_ms: 23.9653
+  type: 'suite'
+  ...
+# Subtest: HoldemTable short-stack call
+    # Subtest: treats heads-up preflop short-stack call as all-in
+    ok 1 - treats heads-up preflop short-stack call as all-in
+      ---
+      duration_ms: 1.496
+      ...
+    # Subtest: treats 3-way postflop short-stack call as side-pot all-in
+    ok 2 - treats 3-way postflop short-stack call as side-pot all-in
+      ---
+      duration_ms: 2.4753
+      ...
+    # Subtest: side-pot winners carry handRank per pot with different winners
+    ok 3 - side-pot winners carry handRank per pot with different winners
+      ---
+      duration_ms: 4.2176
+      ...
+    # Subtest: same player winning multiple pots keeps per-pot handRank details
+    ok 4 - same player winning multiple pots keeps per-pot handRank details
+      ---
+      duration_ms: 1.983
+      ...
+    # Subtest: keeps a covered call as a normal call
+    ok 5 - keeps a covered call as a normal call
+      ---
+      duration_ms: 1.8872
+      ...
+    # Subtest: keeps explicit all-in action working
+    ok 6 - keeps explicit all-in action working
+      ---
+      duration_ms: 0.6707
+      ...
+    # Subtest: does not lock runout after a partial call while two players can still act
+    ok 7 - does not lock runout after a partial call while two players can still act
+      ---
+      duration_ms: 0.8971
+      ...
+    1..7
+ok 13 - HoldemTable short-stack call
+  ---
+  duration_ms: 14.735
+  type: 'suite'
+  ...
+# Subtest: HoldemTable locked runout
+    # Subtest: 3-way locked runout: no action for lone active after short stack all-ins
+    ok 1 - 3-way locked runout: no action for lone active after short stack all-ins
+      ---
+      duration_ms: 2.7673
+      ...
+    # Subtest: 4–6-way locked runout: lone active, rest all-in
+    ok 2 - 4–6-way locked runout: lone active, rest all-in
+      ---
+      duration_ms: 5.781
+      ...
+    # Subtest: heads-up one active + one all-in enters locked runout
+    ok 3 - heads-up one active + one all-in enters locked runout
+      ---
+      duration_ms: 1.5151
+      ...
+    # Subtest: two active players still get flop action
+    ok 4 - two active players still get flop action
+      ---
+      duration_ms: 0.3702
+      ...
+    # Subtest: 3-way postflop skips all-in button when choosing action seat
+    ok 5 - 3-way postflop skips all-in button when choosing action seat
+      ---
+      duration_ms: 0.3494
+      ...
+    # Subtest: 4-6-way postflop skips all-in button with two active players
+    ok 6 - 4-6-way postflop skips all-in button with two active players
+      ---
+      duration_ms: 0.9808
+      ...
+    # Subtest: postflop wraps past non-seat-1 all-in button when choosing action seat
+    ok 7 - postflop wraps past non-seat-1 all-in button when choosing action seat
+      ---
+      duration_ms: 0.4449
+      ...
+    # Subtest: later postflop streets skip all-in button
+    ok 8 - later postflop streets skip all-in button
+      ---
+      duration_ms: 0.5982
+      ...
+    # Subtest: conserves chips through locked runout and showdown
+    ok 9 - conserves chips through locked runout and showdown
+      ---
+      duration_ms: 2.117
+      ...
+    # Subtest: turn-close locked runout deals river and completes showdown
+    ok 10 - turn-close locked runout deals river and completes showdown
+      ---
+      duration_ms: 3.564
+      ...
+    # Subtest: advanceRunout fails when no runout pending
+    ok 11 - advanceRunout fails when no runout pending
+      ---
+      duration_ms: 0.6588
+      ...
+    1..11
+ok 14 - HoldemTable locked runout
+  ---
+  duration_ms: 21.2223
+  type: 'suite'
+  ...
+# Subtest: HoldemTable uncalled bet refund
+    # Subtest: returns uncalled excess heads-up after short stack all-in
+    ok 1 - returns uncalled excess heads-up after short stack all-in
+      ---
+      duration_ms: 0.9084
+      ...
+    # Subtest: 4-way flop uncalled refund conserves chips through locked runout
+    ok 2 - 4-way flop uncalled refund conserves chips through locked runout
+      ---
+      duration_ms: 2.1296
+      ...
+    # Subtest: 3-way locked runout refunds uncalled before runout
+    ok 3 - 3-way locked runout refunds uncalled before runout
+      ---
+      duration_ms: 0.9845
+      ...
+    # Subtest: does not refund when all in-hand players matched the same amount
+    ok 4 - does not refund when all in-hand players matched the same amount
+      ---
+      duration_ms: 1.1006
+      ...
+    # Subtest: does not refund when two players tie at the top bet
+    ok 5 - does not refund when two players tie at the top bet
+      ---
+      duration_ms: 0.7458
+      ...
+    # Subtest: matched folded chips stay in pot at showdown
+    ok 6 - matched folded chips stay in pot at showdown
+      ---
+      duration_ms: 0.8644
+      ...
+    1..6
+ok 15 - HoldemTable uncalled bet refund
+  ---
+  duration_ms: 7.2063
+  type: 'suite'
+  ...
+1..15
+# tests 100
+# suites 15
+# pass 100
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7781.5046
+npm notice
+npm notice New minor version of npm available! 11.16.0 -> 11.17.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.17.0
+npm notice To update run: npm install -g npm@11.17.0
+npm notice

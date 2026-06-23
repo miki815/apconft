@@ -37,6 +37,8 @@ export interface RoomSnapshot {
   handInProgress: boolean
   showdownActive: boolean
   showdownEndsAt: number | null
+  resultKind: 'showdown' | 'fold' | null
+  resultDurationMs: number | null
 }
 
 interface ActionTimerToken {
@@ -59,7 +61,10 @@ export class PokerRoom {
   private lastButtonSeat = 0
   private inShowdown = false
   private showdownEndsAt: number | null = null
+  private resultKind: 'showdown' | 'fold' | null = null
+  private resultDurationMs: number | null = null
   private showdownTimer: ReturnType<typeof setTimeout> | null = null
+  private resultTimerSeq = 0
   private readonly actionTimeoutMs: number
   private readonly rebuyGraceMs: number
   private readonly runoutStreetMs: number
@@ -101,7 +106,7 @@ export class PokerRoom {
     handInProgress: boolean,
   ): SeatInfo {
     let stack = s.stack
-    if (state && (handInProgress || this.inShowdown)) {
+    if (state && handInProgress) {
       const live = state.players.find((p) => p.seat === seatIdx)
       if (live) stack = live.stack
     }
@@ -117,7 +122,7 @@ export class PokerRoom {
     const handInProgress =
       this.table !== null &&
       state !== null &&
-      (!state.handComplete || this.inShowdown)
+      (!state.handComplete || this.isResultDisplayActive())
 
     const seats = this.seats.map((s, seatIdx) => {
       if (!s) return null
@@ -133,6 +138,8 @@ export class PokerRoom {
       handInProgress,
       showdownActive: this.inShowdown,
       showdownEndsAt: this.showdownEndsAt,
+      resultKind: this.resultKind,
+      resultDurationMs: this.resultDurationMs,
     }
   }
 
@@ -281,10 +288,10 @@ export class PokerRoom {
     const seat = this.findSeat(playerId)
     if (seat === null) return 'Not seated'
 
-    const stack = this.currentStack(seat, playerId)
+    const releasable = this.releasableStack(seat, playerId)
     const vaultRequired = !isSkipVaultCheck() && this.tableMint !== null
 
-    if (vaultRequired && stack > 0) {
+    if (vaultRequired && releasable > 0) {
       let pubkey: PublicKey
       try {
         pubkey = new PublicKey(playerId)
@@ -295,8 +302,6 @@ export class PokerRoom {
       if (!releaseTx) {
         return 'Missing release transaction — sign release_from_table in wallet first'
       }
-      const replay = this.consumeVaultTx(releaseTx)
-      if (replay) return replay
 
       const verifyErr = await verifyTableVaultTx(
         this.vaultConnection,
@@ -304,9 +309,12 @@ export class PokerRoom {
         pubkey,
         this.tableMint!,
         'release_from_table',
-        stack,
+        releasable,
       )
       if (verifyErr) return verifyErr
+
+      const replay = this.consumeVaultTx(releaseTx)
+      if (replay) return replay
     }
 
     this.clearRebuyGrace(seat)
@@ -368,9 +376,9 @@ export class PokerRoom {
     const state = this.table.getState()
     if (state.handComplete) {
       if (this.table.isShowdownReveal()) {
-        this.beginShowdown()
+        this.beginResultDisplay('showdown')
       } else {
-        this.finishHand()
+        this.beginResultDisplay('fold')
       }
     } else if (this.table.isRunoutPending()) {
       this.continueRunout()
@@ -398,13 +406,21 @@ export class PokerRoom {
       const priv = this.table.getStateForPlayer(playerId)
       const me = priv.players.find((p) => p.id === playerId)
       holeCards = me?.holeCards ?? null
-      if (state && state.actionSeat === seat && me && !this.inShowdown) {
+      if (
+        state &&
+        state.actionSeat === seat &&
+        me &&
+        !this.isResultDisplayActive()
+      ) {
         canAct = me.status === 'active' && me.stack > 0
         toCall = Math.max(0, state.currentBet - me.betThisRound)
       }
     }
 
-    return { seat, holeCards, canAct, toCall, rebuyDeadlineAt }
+    const releasableStack =
+      seat !== null ? this.releasableStack(seat, playerId) : 0
+
+    return { seat, holeCards, canAct, toCall, rebuyDeadlineAt, releasableStack }
   }
 
   private countEligibleForHand(): number {
@@ -446,12 +462,18 @@ export class PokerRoom {
     const handInProgress =
       this.table !== null &&
       state !== null &&
-      (!state.handComplete || this.inShowdown)
-    if (state && (handInProgress || this.inShowdown)) {
+      (!state.handComplete || this.isResultDisplayActive())
+    if (state && handInProgress) {
       const live = state.players.find((p) => p.seat === seat)
       if (live) return live.stack
     }
     return this.seats[seat]?.stack ?? 0
+  }
+
+  private releasableStack(seat: number, playerId: string): number {
+    const base = this.currentStack(seat, playerId)
+    const pending = this.seats[seat]?.pendingStackAdd ?? 0
+    return base + pending
   }
 
   private clearRunoutTimer() {
@@ -463,7 +485,7 @@ export class PokerRoom {
   }
 
   private continueRunout() {
-    if (!this.table || this.inShowdown) return
+    if (!this.table || this.isResultDisplayActive()) return
     if (this.runoutStreetMs <= 0) {
       this.drainRunout()
       return
@@ -477,11 +499,7 @@ export class PokerRoom {
       const r = this.table.advanceRunout()
       if (!r.ok) break
       if (r.state.handComplete) {
-        if (this.table.isShowdownReveal()) {
-          this.beginShowdown()
-        } else {
-          this.finishHand()
-        }
+        this.beginResultDisplay(this.table.isShowdownReveal() ? 'showdown' : 'fold')
         return
       }
     }
@@ -492,7 +510,7 @@ export class PokerRoom {
       clearTimeout(this.runoutTimer)
       this.runoutTimer = null
     }
-    if (!this.table || this.inShowdown) return
+    if (!this.table || this.isResultDisplayActive()) return
     if (!this.table.isRunoutPending()) return
 
     const seq = ++this.runoutTimerSeq
@@ -508,23 +526,19 @@ export class PokerRoom {
 
     this.runoutTimer = null
 
-    if (!this.table || this.inShowdown) return
+    if (!this.table || this.isResultDisplayActive()) return
     if (!this.table.isRunoutPending()) return
 
     const r = this.table.advanceRunout()
     if (!r.ok) return
 
-    this.onTableUpdate?.()
-
     if (r.state.handComplete) {
       this.clearRunoutTimer()
-      if (this.table.isShowdownReveal()) {
-        this.beginShowdown()
-      } else {
-        this.finishHand()
-      }
+      this.beginResultDisplay(this.table.isShowdownReveal() ? 'showdown' : 'fold')
       return
     }
+
+    this.onTableUpdate?.()
 
     if (this.table.isRunoutPending()) {
       this.scheduleRunoutStep()
@@ -546,7 +560,7 @@ export class PokerRoom {
       clearTimeout(this.actionTimer)
       this.actionTimer = null
     }
-    if (!this.table || this.inShowdown) return
+    if (!this.table || this.isResultDisplayActive()) return
 
     const state = this.table.getState()
     if (state.handComplete || state.actionSeat === null) return
@@ -567,7 +581,7 @@ export class PokerRoom {
 
   private maybeRescheduleActionTimer() {
     if (this.actionTimeoutMs <= 0) return
-    if (!this.table || this.inShowdown) return
+    if (!this.table || this.isResultDisplayActive()) return
     const state = this.table.getState()
     if (state.handComplete || state.actionSeat === null) return
     this.scheduleActionTimer()
@@ -581,7 +595,7 @@ export class PokerRoom {
     this.actionTimer = null
     this.actionTimerToken = null
 
-    if (!this.table || this.inShowdown) return
+    if (!this.table || this.isResultDisplayActive()) return
 
     const state = this.table.getState()
     if (state.handComplete) return
@@ -596,33 +610,41 @@ export class PokerRoom {
       toCall > 0 ? { type: 'fold' } : { type: 'check' }
 
     const err = this.applyAction(player.id, action)
-    if (!err && !this.inShowdown) this.onTableUpdate?.()
+    if (!err && !this.isResultDisplayActive()) this.onTableUpdate?.()
   }
 
-  private beginShowdown() {
-    if (this.inShowdown) return
+  private beginResultDisplay(kind: 'showdown' | 'fold') {
+    if (this.isResultDisplayActive()) return
     this.clearActionTimer()
     this.clearRunoutTimer()
-    this.inShowdown = true
+    this.resultKind = kind
+    this.inShowdown = kind === 'showdown'
     this.showdownEndsAt = Date.now() + SHOWDOWN_MS
+    this.resultDurationMs = SHOWDOWN_MS
     this.onTableUpdate?.()
     if (this.showdownTimer) clearTimeout(this.showdownTimer)
+    const seq = ++this.resultTimerSeq
     this.showdownTimer = setTimeout(() => {
+      if (seq !== this.resultTimerSeq) return
       this.showdownTimer = null
       this.finishHand()
       this.onTableUpdate?.()
     }, SHOWDOWN_MS)
+    this.showdownTimer.unref()
   }
 
   private finishHand() {
     this.clearActionTimer()
     this.clearRunoutTimer()
+    this.resultTimerSeq++
     if (this.showdownTimer) {
       clearTimeout(this.showdownTimer)
       this.showdownTimer = null
     }
     this.inShowdown = false
     this.showdownEndsAt = null
+    this.resultKind = null
+    this.resultDurationMs = null
     this.syncStacksFromTable()
     this.applyPendingStackAdds()
     this.enterRebuyGraceForZeroStacks()
@@ -639,8 +661,12 @@ export class PokerRoom {
 
   private isHandActive(): boolean {
     if (!this.table) return false
-    if (this.inShowdown) return true
+    if (this.isResultDisplayActive()) return true
     return !this.table.getState().handComplete
+  }
+
+  private isResultDisplayActive(): boolean {
+    return this.resultKind !== null
   }
 
   private findSeat(playerId: string): number | null {

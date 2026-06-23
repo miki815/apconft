@@ -15,6 +15,18 @@ export type PlayerAction =
   | { type: 'raise'; total: number }
   | { type: 'all-in' }
 
+export interface WinnerHandRank {
+  category: number
+  name: string
+}
+
+export interface WinnerResult {
+  playerId: string
+  amount: number
+  potIndex: number
+  handRank?: WinnerHandRank
+}
+
 export interface TableState {
   handNumber: number
   buttonSeat: number
@@ -35,7 +47,7 @@ export interface TableState {
   minRaiseTo: number
   actionSeat: number | null
   handComplete: boolean
-  winners: { playerId: string; amount: number }[]
+  winners: WinnerResult[]
 }
 
 export interface SeatInfo {
@@ -50,6 +62,13 @@ export interface YouState {
   canAct: boolean
   toCall: number
   rebuyDeadlineAt: number | null
+  /** Chips releasable on stand (stack + pending add-chips); omitted on older servers */
+  releasableStack?: number
+}
+
+export interface ServerClockAnchor {
+  serverNow: number
+  receivedAtPerformanceNow: number
 }
 
 export interface PokerTableView {
@@ -61,6 +80,9 @@ export interface PokerTableView {
   handInProgress: boolean
   showdownActive: boolean
   showdownEndsAt: number | null
+  resultKind: 'showdown' | 'fold' | null
+  resultDurationMs: number | null
+  clockAnchor: ServerClockAnchor | null
   you: YouState
 }
 
@@ -68,6 +90,40 @@ const WS_URL =
   import.meta.env.VITE_POKER_WS_URL || 'ws://localhost:3081'
 
 const WS_TIMEOUT_MS = 12_000
+
+export function isValidServerNow(v: unknown): v is number {
+  return (
+    typeof v === 'number' &&
+    Number.isFinite(v) &&
+    Number.isSafeInteger(v) &&
+    v > 0
+  )
+}
+
+export function isValidShowdownEndsAt(v: unknown): v is number {
+  return (
+    typeof v === 'number' &&
+    Number.isFinite(v) &&
+    Number.isSafeInteger(v) &&
+    v > 0
+  )
+}
+
+export function isValidResultDurationMs(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0
+}
+
+export function isValidClockAnchor(
+  a: ServerClockAnchor | null | undefined,
+): boolean {
+  if (a == null || typeof a !== 'object') return false
+  return (
+    isValidServerNow(a.serverNow) &&
+    typeof a.receivedAtPerformanceNow === 'number' &&
+    Number.isFinite(a.receivedAtPerformanceNow) &&
+    a.receivedAtPerformanceNow >= 0
+  )
+}
 
 export type AddChipsWaitResult =
   | { error: string }
@@ -99,6 +155,11 @@ type PendingRequest =
       resolve: (result: AddChipsWaitResult) => void
       timer: ReturnType<typeof setTimeout>
     }
+  | {
+      kind: 'stand'
+      resolve: (err: string | null) => void
+      timer: ReturnType<typeof setTimeout>
+    }
 
 /** Input to waitFor — explicit union so TS excess-property check works per kind. */
 type PendingRequestInit =
@@ -109,6 +170,7 @@ type PendingRequestInit =
 export function usePokerWs(playerId: string | null) {
   const wsRef = useRef<WebSocket | null>(null)
   const pendingRef = useRef<PendingRequest | null>(null)
+  const invalidServerNowWarnedForEndsAtRef = useRef<number | null>(null)
   const [connected, setConnected] = useState(false)
   const [table, setTable] = useState<PokerTableView | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -171,6 +233,9 @@ export function usePokerWs(playerId: string | null) {
           handInProgress?: boolean
           showdownActive?: boolean
           showdownEndsAt?: number | null
+          resultKind?: 'showdown' | 'fold' | null
+          resultDurationMs?: number | null
+          serverNow?: unknown
           seat?: number
           buyIn?: number
           amount?: number
@@ -227,6 +292,29 @@ export function usePokerWs(playerId: string | null) {
         }
 
         if (msg.type === 'table' && msg.state && msg.you) {
+          const receivedAtPerformanceNow = performance.now()
+          const clockAnchor = isValidServerNow(msg.serverNow)
+            ? {
+                serverNow: msg.serverNow,
+                receivedAtPerformanceNow,
+              }
+            : null
+
+          const shouldWarnInvalidServerNow =
+            msg.resultKind !== null &&
+            msg.state.handComplete === true &&
+            isValidShowdownEndsAt(msg.showdownEndsAt) &&
+            isValidResultDurationMs(msg.resultDurationMs) &&
+            !isValidServerNow(msg.serverNow)
+
+          if (
+            shouldWarnInvalidServerNow &&
+            msg.showdownEndsAt !== invalidServerNowWarnedForEndsAtRef.current
+          ) {
+            console.warn('Invalid or missing serverNow during result display')
+            invalidServerNowWarnedForEndsAtRef.current = msg.showdownEndsAt!
+          }
+
           const next: PokerTableView = {
             tableId: msg.tableId!,
             state: msg.state,
@@ -236,15 +324,25 @@ export function usePokerWs(playerId: string | null) {
             handInProgress: msg.handInProgress ?? false,
             showdownActive: msg.showdownActive ?? false,
             showdownEndsAt: msg.showdownEndsAt ?? null,
+            resultKind: msg.resultKind ?? null,
+            resultDurationMs: msg.resultDurationMs ?? null,
+            clockAnchor,
             you: {
               ...msg.you,
               rebuyDeadlineAt: msg.you.rebuyDeadlineAt ?? null,
+              ...(typeof msg.you.releasableStack === 'number'
+                ? { releasableStack: msg.you.releasableStack }
+                : {}),
             },
           }
           setTable(next)
 
           const pending = pendingRef.current
           if (pending?.kind === 'sit' && msg.you.seat === pending.seat) {
+            clearPending(null)
+          }
+
+          if (pending?.kind === 'stand' && msg.you.seat === null) {
             clearPending(null)
           }
 
@@ -342,9 +440,26 @@ export function usePokerWs(playerId: string | null) {
     [send, clearPending],
   )
 
-  const stand = useCallback(
-    (releaseTx?: string) => send({ type: 'stand', releaseTx }),
-    [send],
+  const standAndWait = useCallback(
+    async (releaseTx?: string): Promise<string | null> =>
+      new Promise((resolve) => {
+        if (pendingRef.current) {
+          resolve('Prethodni zahtev još traje')
+          return
+        }
+        const timer = setTimeout(() => {
+          if (pendingRef.current?.kind === 'stand') {
+            clearPending('Server nije odgovorio na vreme')
+          }
+        }, WS_TIMEOUT_MS)
+        pendingRef.current = {
+          kind: 'stand',
+          resolve,
+          timer,
+        }
+        send({ type: 'stand', releaseTx })
+      }),
+    [send, clearPending],
   )
   const startHand = useCallback(() => send({ type: 'start-hand' }), [send])
   const act = useCallback(
@@ -360,7 +475,7 @@ export function usePokerWs(playerId: string | null) {
     sitAndWait,
     checkAddChips,
     addChipsAndWait,
-    stand,
+    standAndWait,
     startHand,
     act,
   }

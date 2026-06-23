@@ -1,32 +1,34 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { ServerClockAnchor } from './ws'
 
 interface ShowdownBarProps {
   endsAt: number
   durationMs: number
+  clockAnchor: ServerClockAnchor
 }
 
-function isValidCountdownInput(endsAt: number, durationMs: number): boolean {
-  return Number.isFinite(endsAt) && Number.isFinite(durationMs) && durationMs > 0
-}
-
-export function ShowdownBar({ endsAt, durationMs }: ShowdownBarProps) {
-  const [now, setNow] = useState(() => Date.now())
-  const valid = isValidCountdownInput(endsAt, durationMs)
+export function ShowdownBar({
+  endsAt,
+  durationMs,
+  clockAnchor,
+}: ShowdownBarProps) {
+  const [tickPerf, setTickPerf] = useState(() => performance.now())
 
   useEffect(() => {
-    if (!valid) return
-
     let rafId = 0
     let cancelled = false
 
     const tick = () => {
       if (cancelled) return
+      const nowPerf = performance.now()
+      setTickPerf(nowPerf)
 
-      const currentNow = Date.now()
-      const remainingMs = Math.max(0, endsAt - currentNow)
-      setNow(currentNow)
+      const effective =
+        clockAnchor.serverNow +
+        (nowPerf - clockAnchor.receivedAtPerformanceNow)
+      const remaining = Math.max(0, endsAt - effective)
 
-      if (remainingMs > 0) {
+      if (remaining > 0) {
         rafId = requestAnimationFrame(tick)
       }
     }
@@ -37,13 +39,23 @@ export function ShowdownBar({ endsAt, durationMs }: ShowdownBarProps) {
       cancelled = true
       cancelAnimationFrame(rafId)
     }
-  }, [endsAt, durationMs, valid])
+  }, [
+    endsAt,
+    durationMs,
+    clockAnchor.serverNow,
+    clockAnchor.receivedAtPerformanceNow,
+  ])
 
-  const remainingMs = valid ? Math.max(0, endsAt - now) : 0
-  const progress = useMemo(() => {
-    if (!valid) return 0
-    return Math.max(0, Math.min(1, remainingMs / durationMs))
-  }, [valid, durationMs, remainingMs])
+  const elapsedPerf = Math.max(
+    0,
+    tickPerf - clockAnchor.receivedAtPerformanceNow,
+  )
+  const effectiveServerNow = clockAnchor.serverNow + elapsedPerf
+  const remainingMs = Math.max(0, endsAt - effectiveServerNow)
+  const progress = useMemo(
+    () => Math.max(0, Math.min(1, remainingMs / durationMs)),
+    [durationMs, remainingMs],
+  )
   const seconds = Math.ceil(remainingMs / 1000)
 
   return (

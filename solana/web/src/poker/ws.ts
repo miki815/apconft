@@ -66,6 +66,11 @@ export interface YouState {
   releasableStack?: number
 }
 
+export interface ServerClockAnchor {
+  serverNow: number
+  receivedAtPerformanceNow: number
+}
+
 export interface PokerTableView {
   tableId: string
   state: TableState
@@ -77,6 +82,7 @@ export interface PokerTableView {
   showdownEndsAt: number | null
   resultKind: 'showdown' | 'fold' | null
   resultDurationMs: number | null
+  clockAnchor: ServerClockAnchor | null
   you: YouState
 }
 
@@ -84,6 +90,40 @@ const WS_URL =
   import.meta.env.VITE_POKER_WS_URL || 'ws://localhost:3081'
 
 const WS_TIMEOUT_MS = 12_000
+
+export function isValidServerNow(v: unknown): v is number {
+  return (
+    typeof v === 'number' &&
+    Number.isFinite(v) &&
+    Number.isSafeInteger(v) &&
+    v > 0
+  )
+}
+
+export function isValidShowdownEndsAt(v: unknown): v is number {
+  return (
+    typeof v === 'number' &&
+    Number.isFinite(v) &&
+    Number.isSafeInteger(v) &&
+    v > 0
+  )
+}
+
+export function isValidResultDurationMs(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0
+}
+
+export function isValidClockAnchor(
+  a: ServerClockAnchor | null | undefined,
+): boolean {
+  if (a == null || typeof a !== 'object') return false
+  return (
+    isValidServerNow(a.serverNow) &&
+    typeof a.receivedAtPerformanceNow === 'number' &&
+    Number.isFinite(a.receivedAtPerformanceNow) &&
+    a.receivedAtPerformanceNow >= 0
+  )
+}
 
 export type AddChipsWaitResult =
   | { error: string }
@@ -130,6 +170,7 @@ type PendingRequestInit =
 export function usePokerWs(playerId: string | null) {
   const wsRef = useRef<WebSocket | null>(null)
   const pendingRef = useRef<PendingRequest | null>(null)
+  const invalidServerNowWarnedForEndsAtRef = useRef<number | null>(null)
   const [connected, setConnected] = useState(false)
   const [table, setTable] = useState<PokerTableView | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -194,6 +235,7 @@ export function usePokerWs(playerId: string | null) {
           showdownEndsAt?: number | null
           resultKind?: 'showdown' | 'fold' | null
           resultDurationMs?: number | null
+          serverNow?: unknown
           seat?: number
           buyIn?: number
           amount?: number
@@ -250,6 +292,29 @@ export function usePokerWs(playerId: string | null) {
         }
 
         if (msg.type === 'table' && msg.state && msg.you) {
+          const receivedAtPerformanceNow = performance.now()
+          const clockAnchor = isValidServerNow(msg.serverNow)
+            ? {
+                serverNow: msg.serverNow,
+                receivedAtPerformanceNow,
+              }
+            : null
+
+          const shouldWarnInvalidServerNow =
+            msg.resultKind !== null &&
+            msg.state.handComplete === true &&
+            isValidShowdownEndsAt(msg.showdownEndsAt) &&
+            isValidResultDurationMs(msg.resultDurationMs) &&
+            !isValidServerNow(msg.serverNow)
+
+          if (
+            shouldWarnInvalidServerNow &&
+            msg.showdownEndsAt !== invalidServerNowWarnedForEndsAtRef.current
+          ) {
+            console.warn('Invalid or missing serverNow during result display')
+            invalidServerNowWarnedForEndsAtRef.current = msg.showdownEndsAt!
+          }
+
           const next: PokerTableView = {
             tableId: msg.tableId!,
             state: msg.state,
@@ -261,6 +326,7 @@ export function usePokerWs(playerId: string | null) {
             showdownEndsAt: msg.showdownEndsAt ?? null,
             resultKind: msg.resultKind ?? null,
             resultDurationMs: msg.resultDurationMs ?? null,
+            clockAnchor,
             you: {
               ...msg.you,
               rebuyDeadlineAt: msg.you.rebuyDeadlineAt ?? null,

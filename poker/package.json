@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "node --import tsx --test src/hand-eval.test.ts src/pot.test.ts src/table.test.ts server/room.test.ts",
+    "test": "node --import tsx --test src/hand-eval.test.ts src/pot.test.ts src/table.test.ts server/room.test.ts server/hub.test.ts",
     "server": "tsx server/index.ts"
   },
   "dependencies": {

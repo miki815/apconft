@@ -39,6 +39,8 @@ export type ServerMessage =
       resultKind: 'showdown' | 'fold' | null
       /** Server-authoritative result display duration, used for countdown progress. */
       resultDurationMs: number | null
+      /** Unix ms on server when this table message was sent (per connection). */
+      serverNow: number
       you: YouState
     }
   | { type: 'error'; message: string }

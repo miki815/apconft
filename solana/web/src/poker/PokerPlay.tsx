@@ -10,7 +10,7 @@ import { ShowdownBar } from './ShowdownBar'
 import { PotBreakdown } from './PotBreakdown'
 import { computeDisplayPots } from './pots'
 import { isResultDisplayActive, isShowdownPhase } from './showdown'
-import { cardLabel, preflightSitMessage, shortPk, usePokerWs } from './ws'
+import { cardLabel, preflightSitMessage, shortPk, usePokerWs, isValidClockAnchor, isValidResultDurationMs, isValidShowdownEndsAt } from './ws'
 import type { WinnerResult } from './ws'
 
 const TABLE_MINT = import.meta.env.VITE_MINT || ''
@@ -126,6 +126,14 @@ export function PokerPlay() {
   const resultPhase = useMemo(() => isResultDisplayActive(table), [table])
   const resultEndsAt = table?.showdownEndsAt ?? null
   const resultDurationMs = table?.resultDurationMs ?? null
+  const hasDeadlineFields =
+    isValidShowdownEndsAt(resultEndsAt) &&
+    isValidResultDurationMs(resultDurationMs)
+  const countdownReady =
+    resultPhase &&
+    hasDeadlineFields &&
+    isValidClockAnchor(table?.clockAnchor)
+  const showDeadlineFallback = resultPhase && !hasDeadlineFields
   const winnerGroups = useMemo(
     () => groupWinners(table?.state.winners ?? []),
     [table],
@@ -812,13 +820,14 @@ export function PokerPlay() {
           ) : null}
         </div>
 
-        {resultPhase && resultEndsAt && resultDurationMs ? (
+        {countdownReady ? (
           <ShowdownBar
             key={resultEndsAt}
             endsAt={resultEndsAt}
             durationMs={resultDurationMs}
+            clockAnchor={table!.clockAnchor!}
           />
-        ) : resultPhase ? (
+        ) : showDeadlineFallback ? (
           <p className="showdown-bar-fallback">Čeka se server deadline.</p>
         ) : null}
       </section>

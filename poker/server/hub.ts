@@ -1,7 +1,7 @@
 import type { WebSocket } from 'ws'
-import type { ClientMessage, ServerMessage } from '../src/protocol.js'
+import type { ClientMessage, ServerMessage, YouState } from '../src/protocol.js'
 import { DEFAULT_TABLE_ID } from '../src/protocol.js'
-import { PokerRoom } from './room.js'
+import { PokerRoom, type RoomSnapshot } from './room.js'
 
 interface Connection {
   ws: WebSocket
@@ -140,27 +140,36 @@ export class PokerHub {
 
   private sendTableTo(ws: WebSocket, room: PokerRoom, playerId: string) {
     const snap = room.snapshot()
-    const msg: ServerMessage = {
-      type: 'table',
-      tableId: snap.tableId,
-      state: snap.state ?? emptyTableState(),
-      you: room.youState(playerId),
-      seats: snap.seats,
-      smallBlind: snap.smallBlind,
-      bigBlind: snap.bigBlind,
-      handInProgress: snap.handInProgress,
-      showdownActive: snap.showdownActive,
-      showdownEndsAt: snap.showdownEndsAt,
-      resultKind: snap.resultKind,
-      resultDurationMs: snap.resultDurationMs,
-    }
-    this.send(ws, msg)
+    const serverNow = Date.now()
+    this.send(ws, buildTableMessage(snap, room.youState(playerId), serverNow))
   }
 
   private send(ws: WebSocket, msg: ServerMessage | Record<string, unknown>) {
     if (ws.readyState === ws.OPEN) {
       ws.send(JSON.stringify(msg))
     }
+  }
+}
+
+export function buildTableMessage(
+  snap: RoomSnapshot,
+  you: YouState,
+  serverNow: number,
+): ServerMessage {
+  return {
+    type: 'table',
+    tableId: snap.tableId,
+    state: snap.state ?? emptyTableState(),
+    you,
+    seats: snap.seats,
+    smallBlind: snap.smallBlind,
+    bigBlind: snap.bigBlind,
+    handInProgress: snap.handInProgress,
+    showdownActive: snap.showdownActive,
+    showdownEndsAt: snap.showdownEndsAt,
+    resultKind: snap.resultKind,
+    resultDurationMs: snap.resultDurationMs,
+    serverNow,
   }
 }
 

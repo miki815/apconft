@@ -655,6 +655,12 @@ describe('HoldemTable locked runout', () => {
       assert.equal(river.ok, true, `n=${n}`)
       assert.equal(river.state!.board.length, 5, `n=${n}`)
       assert.equal(river.state!.handComplete, true, `n=${n}`)
+      assert.ok(river.state!.winners.length >= 1, `n=${n}`)
+      for (const winner of river.state!.winners) {
+        assert.ok(winner.handRank, `n=${n}`)
+        assert.equal(typeof winner.handRank!.category, 'number', `n=${n}`)
+        assert.equal(typeof winner.handRank!.name, 'string', `n=${n}`)
+      }
     }
   })
 

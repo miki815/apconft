@@ -1157,9 +1157,9 @@ button.btn-allin {
 
 .winner-banner {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
   padding: 0.85rem 1rem;
   margin-bottom: 1rem;
   border-radius: 12px;
@@ -1176,39 +1176,113 @@ button.btn-allin {
   width: 100%;
 }
 
+.winner-banner-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+}
+
 .winner-chip {
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
-  gap: 0.3rem;
-  min-width: 9rem;
-  padding: 0.5rem 0.6rem;
+  gap: 0.15rem;
+  min-width: min(100%, 9rem);
+  max-width: 100%;
+  padding: 0.4rem 0.55rem;
   border-radius: 10px;
-  background: rgba(10, 16, 26, 0.48);
-  border: 1px solid rgba(240, 193, 75, 0.18);
+  border: 1px solid rgba(240, 193, 75, 0.25);
+  border-top: 2px solid rgba(240, 193, 75, 0.45);
+  background: rgba(14, 20, 30, 0.55);
   font-size: 0.85rem;
   color: #c5d4e8;
+}
+
+.winner-chip--you {
+  border-left: 3px solid var(--accent);
 }
 
 .winner-chip-head {
   display: flex;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.5rem;
+  padding-bottom: 0.22rem;
+  border-bottom: 1px dashed rgba(240, 193, 75, 0.2);
   font-weight: 700;
 }
 
-.winner-chip-head strong {
+.winner-chip-name {
+  min-width: 0;
+}
+
+.winner-chip--you .winner-chip-name {
+  color: var(--accent);
+}
+
+.winner-chip-total {
+  flex-shrink: 0;
   color: var(--success);
+  font-variant-numeric: tabular-nums;
 }
 
 .winner-chip-details {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0;
+  margin-top: 0.18rem;
 }
 
-.winner-pot-detail {
+.winner-pot-row {
+  padding: 0.18rem 0;
+}
+
+.winner-pot-row + .winner-pot-row {
+  border-top: 1px dashed rgba(255, 255, 255, 0.06);
+}
+
+.winner-pot-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.winner-pot-label {
+  min-width: 0;
+  flex: 1 1 auto;
   font-size: 0.72rem;
+  font-weight: 600;
   color: #8fa3bb;
+}
+
+.winner-pot-row--main .winner-pot-label {
+  font-weight: 700;
+  color: #a8b8cc;
+}
+
+.winner-pot-amount {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.winner-pot-rank {
+  display: block;
+  margin-top: 0.05rem;
+  padding-left: 0.12rem;
+  font-size: 0.65rem;
+  line-height: 1.2;
+  color: #6f849c;
+  word-break: break-word;
+}
+
+@media (max-width: 540px) {
+  .winner-chip {
+    padding: 0.38rem 0.48rem;
+  }
 }
 
 .showdown-bar-wrap {

@@ -11,8 +11,11 @@ import { PokerTableVisual } from './PokerTableVisual'
 import { PokerWinnerBanner } from './PokerWinnerBanner'
 import { RebuyGraceBar } from './RebuyGraceBar'
 import { ShowdownBar } from './ShowdownBar'
+import { computeRaiseBounds } from './betting'
 import { computeDisplayPots } from './pots'
 import { isResultDisplayActive, isShowdownPhase } from './showdown'
+import type { SitRecoveryState } from './types'
+import { groupWinners } from './winners'
 import {
   preflightSitMessage,
   usePokerWs,
@@ -20,7 +23,6 @@ import {
   isValidResultDurationMs,
   isValidShowdownEndsAt,
 } from './ws'
-import type { WinnerResult } from './ws'
 
 const TABLE_MINT = import.meta.env.VITE_MINT || ''
 const PROGRAM_ID_STR =
@@ -29,40 +31,6 @@ const PROGRAM_ID_STR =
 const SKIP_VAULT =
   import.meta.env.VITE_POKER_SKIP_VAULT_CHECK === '1' ||
   import.meta.env.VITE_POKER_SKIP_VAULT_CHECK === 'true'
-
-interface SitRecoveryState {
-  amount: number
-  seat: number
-  lockTx: string
-  sitError: string
-  releaseError: string | null
-}
-
-interface WinnerGroup {
-  playerId: string
-  total: number
-  wins: WinnerResult[]
-}
-
-function potLabel(index: number): string {
-  return index === 0 ? 'Glavni pot' : `Side pot ${index}`
-}
-
-function groupWinners(winners: WinnerResult[]): WinnerGroup[] {
-  const byPlayer = new Map<string, WinnerGroup>()
-  for (const winner of winners) {
-    const group =
-      byPlayer.get(winner.playerId) ??
-      { playerId: winner.playerId, total: 0, wins: [] }
-    group.total += winner.amount
-    group.wins.push(winner)
-    byPlayer.set(winner.playerId, group)
-  }
-  return [...byPlayer.values()].map((group) => ({
-    ...group,
-    wins: [...group.wins].sort((a, b) => a.potIndex - b.potIndex),
-  }))
-}
 
 export function PokerPlay() {
   const wallet = useAnchorWallet()
@@ -145,20 +113,10 @@ export function PokerPlay() {
 
   const [raiseTotal, setRaiseTotal] = useState(0)
 
-  const raiseBounds = useMemo(() => {
-    if (!table?.you.canAct || mySeat === null) return null
-    const me = table.state.players.find((p) => p.seat === mySeat)
-    if (!me) return null
-    const min = table.state.minRaiseTo
-    const max = me.betThisRound + me.stack
-    if (max <= table.state.currentBet) return null
-    return {
-      min: Math.min(min, max),
-      max,
-      step: Math.max(1, table.bigBlind),
-      isBet: table.state.currentBet === 0,
-    }
-  }, [table, mySeat])
+  const raiseBounds = useMemo(
+    () => computeRaiseBounds(table, mySeat),
+    [table, mySeat],
+  )
 
   useEffect(() => {
     if (!raiseBounds) return
@@ -171,12 +129,13 @@ export function PokerPlay() {
   const canRaise =
     raiseBounds !== null && raiseBounds.max >= raiseBounds.min
 
-  const canStart =
+  const canStart = Boolean(
     eligibleCount >= 2 &&
-    table &&
-    !table.handInProgress &&
-    !resultPhase &&
-    table.state.handComplete
+      table &&
+      !table.handInProgress &&
+      !resultPhase &&
+      table.state.handComplete,
+  )
 
   const board = table?.state.board ?? []
   const showBoard =
@@ -623,7 +582,6 @@ export function PokerPlay() {
           table={table}
           winnerGroups={winnerGroups}
           playerId={playerId}
-          potLabel={potLabel}
         />
       ) : null}
 

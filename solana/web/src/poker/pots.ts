@@ -57,7 +57,7 @@ export function formatSeatLabel(seat: number): string {
   return `Mesto ${seat + 1}`
 }
 
-function potLabel(index: number): string {
+export function potLabel(index: number): string {
   return index === 0 ? 'Glavni pot' : `Side pot ${index}`
 }
 

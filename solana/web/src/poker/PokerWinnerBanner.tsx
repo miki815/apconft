@@ -1,24 +1,18 @@
-import type { PokerTableView, WinnerResult } from './ws'
+import { potLabel } from './pots'
+import type { WinnerGroup } from './types'
+import type { PokerTableView } from './ws'
 import { shortPk } from './ws'
-
-export interface WinnerGroup {
-  playerId: string
-  total: number
-  wins: WinnerResult[]
-}
 
 interface PokerWinnerBannerProps {
   table: PokerTableView
   winnerGroups: WinnerGroup[]
   playerId: string | null
-  potLabel: (index: number) => string
 }
 
 export function PokerWinnerBanner({
   table,
   winnerGroups,
   playerId,
-  potLabel,
 }: PokerWinnerBannerProps) {
   return (
     <div className="winner-banner">

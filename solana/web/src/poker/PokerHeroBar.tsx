@@ -1,13 +1,7 @@
 import { PlayingCard } from './PlayingCard'
+import type { RaiseBounds } from './types'
 import type { Card, PlayerAction, PokerTableView } from './ws'
 import { cardLabel } from './ws'
-
-export interface RaiseBounds {
-  min: number
-  max: number
-  step: number
-  isBet: boolean
-}
 
 interface PokerHeroBarProps {
   holeCards: Card[]

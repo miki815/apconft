@@ -1,14 +1,7 @@
 import type { ChangeEvent } from 'react'
 import type { PublicKey } from '@solana/web3.js'
+import type { SitRecoveryState } from './types'
 import { shortPk } from './ws'
-
-export interface SitRecoveryState {
-  amount: number
-  seat: number
-  lockTx: string
-  sitError: string
-  releaseError: string | null
-}
 
 interface PokerControlsPanelProps {
   skipVault: boolean
@@ -33,7 +26,7 @@ interface PokerControlsPanelProps {
   buyInValid: boolean
   vaultTxReady: boolean
   pickSeat: number
-  canStart: boolean | null | undefined
+  canStart: boolean
   seatedCount: number
   myStack: number
   txMsg: string | null

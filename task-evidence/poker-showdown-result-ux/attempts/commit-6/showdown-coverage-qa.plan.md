@@ -237,7 +237,7 @@ side-pot različite winner-e i mobilni multi-block layout proxy.
 
 | Rizik | Mitigacija |
 |-------|------------|
-| Tie u browseru ne postignut | `NOT REACHED random deck` + engine test |
+| Tie u browseru retko sa random deck-om | Dostižan na 7. pokušaju — manual-qa **PASS**; engine test kao dodatna pokrivenost |
 | Side-pot 5 pokušaja bez 2 winner bloka | **PARTIAL** ako side-pot UI OK, isti igrač više potova; **FAIL** samo ako nema side-pot showdown ili UI struktura pogrešna |
 | Mobile layout fail na 2 bloka | STOP + korisnička odluka za CSS fix |
 | 5–6 winner blokova nije testirano | Prihvaćeno; dokumentovati stvarni broj blokova |
@@ -248,7 +248,7 @@ side-pot različite winner-e i mobilni multi-block layout proxy.
 
 ## Status plana
 
-**Automatski deo implementiran — manual QA pending.**
+**Automatski deo implementiran — manual QA PASS.**
 
 | Stavka | Status |
 |--------|--------|
@@ -256,5 +256,5 @@ side-pot različite winner-e i mobilni multi-block layout proxy.
 | Auto-test proširenje | Implementirano |
 | `npm run poker:test` | vidi `poker-test-pass-100-of-100.log` |
 | `npm run build --prefix solana/web` | vidi `frontend-build-pass.log` |
-| Manual QA (tie / side-pot / mobile) | **not run** |
+| Manual QA (tie / side-pot / mobile) | **PASS** — vidi `manual-qa.md` |
 | Commit / push | **not done** |

@@ -2,8 +2,8 @@
 
 **Task:** poker showdown result UX — preostali coverage / manual QA  
 **Branch:** `feature/poker-showdown-result-ux`  
-**Overall status:** **PASS with tie NOT REACHED random deck**  
-**Date verified:** 2026-06-23 (korisnički potvrđeno)
+**Overall status:** **PASS**  
+**Date verified:** 2026-06-23 (side-pot, mobile); 2026-06-24 (tie/split browser — korisnički potvrđeno screenshotom)
 
 ## Preconditions
 
@@ -21,11 +21,11 @@
 
 | Polje | Vrednost |
 |-------|----------|
-| **Status** | **NOT REACHED random deck** |
-| **Broj pokušaja** | 6 |
-| **Broj winner blokova** | 1 |
+| **Status** | **PASS** |
+| **Broj pokušaja** | 7 |
+| **Broj winner blokova** | 2 |
 | **Viewport (px)** | desktop |
-| **Napomena** | Posle 6 HU check/call showdown pokušaja nije postignut split/tie. Rezultati su bili single-winner: Two Pair; Four of a Kind; Flush; Flush; Pair; Two Pair. **Nije MR FAIL** — tie/split logika pokrivena engine testom `board-play split winners share the same handRank`. UI multi-winner rendering indirektno potvrđen side-pot PASS scenarijem (2 winner bloka). |
+| **Napomena** | Nakon prethodnih pokušaja sa random deck-om, u browseru je dostignut tie/split scenario. Result panel prikazao je 2 winner bloka: oba igrača imaju `Glavni pot +10`, isti hand rank `Straight`, a ukupni pot `20` je podeljen na po `10`. Time je ručno potvrđen browser tie/split prikaz. |
 
 ---
 
@@ -55,7 +55,7 @@
 
 ## Verdict
 
-**Overall:** **PASS with tie NOT REACHED random deck**
+**Overall:** **PASS**
 
 | Oblast | Rezultat |
 |--------|----------|
@@ -63,14 +63,14 @@
 | Regression build | PASS |
 | Side-pot različiti pobednici | PASS |
 | Mobile winner blokovi | PASS |
-| Tie browser pokušaj | NOT REACHED random deck — **nije MR FAIL** (engine test + multi-winner UI potvrđen side-pot scenarijem) |
+| Tie browser pokušaj | PASS — 2 winner bloka, split pot `20` → po `10`, isti rank `Straight` |
 
-**Manual QA:** izvršeno 3/3 scenarija (tie: NOT REACHED; side-pot: PASS; mobile: PASS).
+**Manual QA:** izvršeno 3/3 scenarija (tie: PASS; side-pot: PASS; mobile: PASS).
 
 ---
 
 ## Known residual risks / out of scope
 
-- Tie u browseru sa random deck-om — retko dostižan bez rig/deck alata; logika pokrivena engine testom
+- Tie u browseru sa random deck-om — retko dostižan (7. pokušaj); engine test ostaje dodatna pokrivenost
 - Real Vault add-chips timing tokom result perioda — budući QA task
 - Best-five / `bestCards` — van MR scope-a

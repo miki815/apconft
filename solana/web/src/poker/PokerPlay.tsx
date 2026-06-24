@@ -1,16 +1,25 @@
 import { Idl } from '@coral-xyz/anchor'
 import { useAnchorWallet, useConnection } from '@solana/wallet-adapter-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { PublicKey } from '@solana/web3.js'
 import { lockForTable, releaseFromTable } from '../vault/tableVault'
 import { useVaultBalance } from '../vault/useVaultBalance'
-import { CardRow, PlayingCard } from './PlayingCard'
+import { PokerControlsPanel } from './PokerControlsPanel'
+import { PokerHeroBar } from './PokerHeroBar'
+import { PokerStatusBar } from './PokerStatusBar'
+import { PokerTableVisual } from './PokerTableVisual'
+import { PokerWinnerBanner } from './PokerWinnerBanner'
 import { RebuyGraceBar } from './RebuyGraceBar'
 import { ShowdownBar } from './ShowdownBar'
-import { PotBreakdown } from './PotBreakdown'
 import { computeDisplayPots } from './pots'
 import { isResultDisplayActive, isShowdownPhase } from './showdown'
-import { cardLabel, preflightSitMessage, shortPk, usePokerWs, isValidClockAnchor, isValidResultDurationMs, isValidShowdownEndsAt } from './ws'
+import {
+  preflightSitMessage,
+  usePokerWs,
+  isValidClockAnchor,
+  isValidResultDurationMs,
+  isValidShowdownEndsAt,
+} from './ws'
 import type { WinnerResult } from './ws'
 
 const TABLE_MINT = import.meta.env.VITE_MINT || ''
@@ -20,15 +29,6 @@ const PROGRAM_ID_STR =
 const SKIP_VAULT =
   import.meta.env.VITE_POKER_SKIP_VAULT_CHECK === '1' ||
   import.meta.env.VITE_POKER_SKIP_VAULT_CHECK === 'true'
-
-const SEAT_POS: readonly [number, number][] = [
-  [50, 6],
-  [86, 24],
-  [86, 76],
-  [50, 94],
-  [14, 76],
-  [14, 24],
-]
 
 interface SitRecoveryState {
   amount: number
@@ -240,6 +240,21 @@ export function PokerPlay() {
     const me = table.state.players.find((p) => p.seat === mySeat)
     return me?.holeCards ?? []
   }, [table, mySeat])
+
+  const handleBuyInChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value.replace(/[^\d]/g, '')
+    if (v === '') {
+      setBuyIn('')
+      return
+    }
+    const n = parseInt(v, 10)
+    const cap = mySeat !== null ? maxAddChips : maxBuyIn
+    if (n > cap) {
+      setBuyIn(String(cap))
+    } else {
+      setBuyIn(v)
+    }
+  }
 
   const handleAddChips = async () => {
     if (!addChipsValid || !wallet || !connected || mySeat === null) return
@@ -555,270 +570,41 @@ export function PokerPlay() {
 
   return (
     <div className="poker-page">
-      <div className="poker-status-bar">
-        <span
-          className={`status-pill ${connected ? 'status-pill--on' : 'status-pill--off'}`}
-        >
-          {connected ? 'Live' : 'Offline'}
-        </span>
-        {playerId ? (
-          <span className="poker-player-id">{shortPk(playerId)}</span>
-        ) : (
-          <span className="poker-player-id muted">Poveži novčanik</span>
-        )}
-        {table?.handInProgress ? (
-          <span className="poker-meta">
-            Blinds {table.smallBlind}/{table.bigBlind}
-          </span>
-        ) : null}
-      </div>
+      <PokerStatusBar
+        connected={connected}
+        playerId={playerId}
+        handInProgress={table?.handInProgress}
+        smallBlind={table?.smallBlind}
+        bigBlind={table?.bigBlind}
+      />
 
       <section
         className={`poker-table-section panel panel--flush ${resultPhase ? 'panel--showdown' : ''}${potDisplay.showBreakdown ? ' poker-table-section--pot-breakdown' : ''}`}
       >
-        <div
-          className={`poker-table-wrap${potDisplay.showBreakdown ? ' poker-table-wrap--pot-breakdown' : ''}`}
-        >
-          <div
-            className={`table-visual table-visual--poker ${resultPhase ? 'table-visual--showdown' : ''}`}
-          >
-            <div className="table-rail" />
+        <PokerTableVisual
+          table={table}
+          mySeat={mySeat}
+          pickSeat={pickSeat}
+          showdownPhase={showdownPhase}
+          resultPhase={resultPhase}
+          winnerIds={winnerIds}
+          potDisplay={potDisplay}
+          showBoard={showBoard}
+          board={board}
+          onPickSeat={setPickSeat}
+        />
 
-            <div className="table-center">
-              {showBoard ? (
-                <div className="board-zone">
-                  <CardRow cards={board} size="md" slots={5} />
-                </div>
-              ) : null}
-
-              <div className="pot-label pot-label--poker">
-                <span className="pot-icon" aria-hidden="true">
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M12 2.75c-4.97 0-9 1.9-9 4.25S7.03 11.25 12 11.25s9-1.9 9-4.25-4.03-4.25-9-4.25Z"
-                    fill="currentColor"
-                    opacity="0.95"
-                  />
-                  <path
-                    d="M3 7v3.25C3 12.6 7.03 14.5 12 14.5s9-1.9 9-4.25V7c0 2.35-4.03 4.25-9 4.25S3 9.35 3 7Z"
-                    fill="currentColor"
-                    opacity="0.75"
-                  />
-                  <path
-                    d="M3 10.25V13.5c0 2.35 4.03 4.25 9 4.25s9-1.9 9-4.25v-3.25c0 2.35-4.03 4.25-9 4.25s-9-1.9-9-4.25Z"
-                    fill="currentColor"
-                    opacity="0.55"
-                  />
-                  <path
-                    d="M3 13.5v3.5c0 2.35 4.03 4.25 9 4.25s9-1.9 9-4.25v-3.5c0 2.35-4.03 4.25-9 4.25s-9-1.9-9-4.25Z"
-                    fill="currentColor"
-                    opacity="0.4"
-                  />
-                </svg>
-                </span>
-                <span className="pot-amount">{potDisplay.total}</span>
-              </div>
-            </div>
-
-            {SEAT_POS.map(([left, top], seat) => {
-              const info = table?.seats[seat]
-              const inHand = table?.state.players.find((p) => p.seat === seat)
-              const isMe = mySeat === seat
-              const isAction = table?.state.actionSeat === seat
-              const folded = inHand?.status === 'folded'
-              const isWinner = !!info && resultPhase && winnerIds.has(info.playerId)
-              const displayStack =
-                inHand !== undefined ? inHand.stack : (info?.stack ?? 0)
-              const revealCards =
-                showdownPhase &&
-                !isMe &&
-                inHand?.holeCards &&
-                inHand.holeCards.length === 2 &&
-                inHand.status !== 'folded'
-
-              return (
-                <div
-                  key={seat}
-                  className="seat-wrap"
-                  style={{ left: `${left}%`, top: `${top}%` }}
-                >
-                  {revealCards ? (
-                    <div className="seat-reveal-cards">
-                      {inHand.holeCards!.map((c, i) => (
-                        <PlayingCard
-                          key={`${cardLabel(c)}-${i}`}
-                          card={c}
-                          size="sm"
-                        />
-                      ))}
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={[
-                      'seat',
-                      'seat--poker',
-                      pickSeat === seat ? 'selected' : '',
-                      isMe ? 'you' : '',
-                      isAction ? 'action' : '',
-                      isWinner ? 'winner' : '',
-                      folded ? 'folded' : '',
-                      info ? 'occupied' : 'empty',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    onClick={() => setPickSeat(seat)}
-                  >
-                    <span className="seat-num">{seat + 1}</span>
-                    {info ? (
-                      <>
-                        <span className="seat-name">
-                          {isMe ? 'Ti' : shortPk(info.playerId)}
-                        </span>
-                        <span className="seat-stack">{displayStack}</span>
-                        {inHand?.roundAction &&
-                        table?.handInProgress &&
-                        !showdownPhase ? (
-                          <span className="seat-action">{inHand.roundAction}</span>
-                        ) : null}
-                      </>
-                    ) : (
-                      <span className="seat-empty-label">Slobodno</span>
-                    )}
-                  </button>
-                </div>
-              )
-            })}
-
-            {resultPhase ? (
-              <div className="showdown-overlay" aria-live="polite">
-                <span className="showdown-overlay-title">
-                  {showdownPhase ? 'Showdown' : 'Rezultat ruke'}
-                </span>
-              </div>
-            ) : null}
-          </div>
-          {potDisplay.showBreakdown ? (
-            <PotBreakdown pots={potDisplay.pots} />
-          ) : null}
-        </div>
-
-        <div className="hero-bar">
-          <div className="hero-hand">
-            <p className="hero-hand-label">Tvoje karte</p>
-            {holeCards.length === 2 ? (
-              <div className="hero-hand-cards">
-                {holeCards.map((c, i) => (
-                  <PlayingCard
-                    key={`${cardLabel(c)}-${i}`}
-                    card={c}
-                    size="lg"
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="hero-hand-cards hero-hand-cards--idle">
-                <PlayingCard size="lg" faceDown />
-                <PlayingCard size="lg" faceDown />
-              </div>
-            )}
-          </div>
-
-          {table?.you.canAct ? (
-            <div className="hero-actions">
-              {table.you.toCall > 0 ? (
-                <span className="hero-actions-hint">
-                  {isShortStackCall ? (
-                    <>
-                      Call all-in <strong>{myStack}</strong>
-                    </>
-                  ) : (
-                    <>
-                      Call <strong>{table.you.toCall}</strong>
-                    </>
-                  )}
-                </span>
-              ) : null}
-              {canRaise && raiseBounds ? (
-                <div className="hero-raise">
-                  <div className="hero-raise-head">
-                    <span className="hero-raise-label">
-                      {raiseBounds.isBet ? 'Bet' : 'Raise'}
-                    </span>
-                    <span className="hero-raise-value">{raiseTotal}</span>
-                  </div>
-                  <input
-                    type="range"
-                    className="hero-raise-slider"
-                    min={raiseBounds.min}
-                    max={raiseBounds.max}
-                    step={raiseBounds.step}
-                    value={raiseTotal}
-                    onChange={(e) => setRaiseTotal(parseInt(e.target.value, 10))}
-                  />
-                  <div className="hero-raise-range">
-                    <span>{raiseBounds.min}</span>
-                    <span>{raiseBounds.max}</span>
-                  </div>
-                </div>
-              ) : null}
-              <div className="hero-actions-btns">
-                <button
-                  type="button"
-                  className="btn-fold"
-                  onClick={() => act({ type: 'fold' })}
-                >
-                  Fold
-                </button>
-                {table.you.toCall === 0 ? (
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => act({ type: 'check' })}
-                  >
-                    Check
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="primary"
-                    onClick={() => act({ type: 'call' })}
-                  >
-                    {isShortStackCall ? `Call all-in ${myStack}` : 'Call'}
-                  </button>
-                )}
-                {canRaise && raiseBounds ? (
-                  <button
-                    type="button"
-                    className="primary"
-                    onClick={() =>
-                      act(
-                        raiseBounds.isBet
-                          ? { type: 'bet', total: raiseTotal }
-                          : { type: 'raise', total: raiseTotal },
-                      )
-                    }
-                  >
-                    {raiseBounds.isBet ? 'Bet' : 'Raise'} {raiseTotal}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="btn-allin"
-                  onClick={() => act({ type: 'all-in' })}
-                >
-                  All-in
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <PokerHeroBar
+          holeCards={holeCards}
+          table={table}
+          myStack={myStack}
+          isShortStackCall={isShortStackCall}
+          canRaise={canRaise}
+          raiseBounds={raiseBounds}
+          raiseTotal={raiseTotal}
+          onRaiseTotalChange={setRaiseTotal}
+          onAct={act}
+        />
 
         {countdownReady ? (
           <ShowdownBar
@@ -833,252 +619,60 @@ export function PokerPlay() {
       </section>
 
       {resultPhase && table && winnerGroups.length > 0 ? (
-        <div className="winner-banner">
-          <span className="winner-banner-title">
-            {table.resultKind === 'showdown' ? 'Showdown rezultat' : 'Rezultat ruke'}
-          </span>
-          <div className="winner-banner-chips">
-            {winnerGroups.map((group) => {
-              const isYou = group.playerId === playerId
-              return (
-                <div
-                  key={group.playerId}
-                  className={[
-                    'winner-chip',
-                    isYou ? 'winner-chip--you' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                >
-                  <div className="winner-chip-head">
-                    <span className="winner-chip-name">
-                      {isYou ? 'Ti' : shortPk(group.playerId)}
-                    </span>
-                    <strong className="winner-chip-total">+{group.total}</strong>
-                  </div>
-                  <div className="winner-chip-details">
-                    {group.wins.map((win) => (
-                      <div
-                        key={`${win.playerId}-${win.potIndex}`}
-                        className={[
-                          'winner-pot-row',
-                          win.potIndex === 0 ? 'winner-pot-row--main' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                      >
-                        <div className="winner-pot-head">
-                          <span className="winner-pot-label">
-                            {potLabel(win.potIndex)}
-                          </span>
-                          <span className="winner-pot-amount">+{win.amount}</span>
-                        </div>
-                        {win.handRank ? (
-                          <span className="winner-pot-rank">{win.handRank.name}</span>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <PokerWinnerBanner
+          table={table}
+          winnerGroups={winnerGroups}
+          playerId={playerId}
+          potLabel={potLabel}
+        />
       ) : null}
 
       {inRebuyGrace && rebuyDeadlineAt ? (
         <RebuyGraceBar key={rebuyDeadlineAt} deadlineAt={rebuyDeadlineAt} />
       ) : null}
 
-      <div className="poker-controls panel">
-        <h2 className="panel-title">Sto</h2>
-        <p className="panel-hint">
-          {SKIP_VAULT
-            ? 'Vault provera isključena (dev). Buy-in bez on-chain lock-a.'
-            : 'Sedanje i ustajanje zahtevaju potpis u novčaniku (lock / release vault stanja).'}
-        </p>
-        {!TABLE_MINT || !mintPk ? (
-          <p className="err">
-            Postavi <strong>VITE_MINT</strong> u solana/web/.env (pokreni{' '}
-            <code>npm run vault -- mint-setup</code>).
-          </p>
-        ) : (
-          <p className="stats">
-            Dostupno u vault-u:{' '}
-            <strong>
-              {vaultLoading ? '…' : vaultChips !== null ? vaultChips : '—'}
-            </strong>{' '}
-            čipova
-            <button
-              type="button"
-              className="link-btn"
-              disabled={!playerId}
-              onClick={() => void refreshVault()}
-            >
-              osveži
-            </button>
-          </p>
-        )}
-        {sitRecovery ? (
-          <div className="err">
-            <strong>Recover locked chips:</strong> buy-in od{' '}
-            {sitRecovery.amount} čipova za mesto {sitRecovery.seat + 1} nije
-            seo za sto posle lock-a. Klikni recovery da pošalješ samo release,
-            bez novog lock-a ili sit zahteva.
-            <br />
-            Lock TX: <code>{shortPk(sitRecovery.lockTx)}</code>
-            <br />
-            Sit error: {sitRecovery.sitError}
-            {sitRecovery.releaseError ? (
-              <>
-                <br />
-                Release error: {sitRecovery.releaseError}
-              </>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="row row--compact">
-          <div>
-            <label>
-              {mySeat !== null
-                ? `Dopuna (max ${maxAddChips})`
-                : `Buy-in (max ${maxBuyIn})`}
-            </label>
-            <input
-              type="text"
-              value={buyIn}
-              onChange={(e) => {
-                const v = e.target.value.replace(/[^\d]/g, '')
-                if (v === '') {
-                  setBuyIn('')
-                  return
-                }
-                const n = parseInt(v, 10)
-                const cap = mySeat !== null ? maxAddChips : maxBuyIn
-                if (n > cap) {
-                  setBuyIn(String(cap))
-                } else {
-                  setBuyIn(v)
-                }
-              }}
-              disabled={
-                !playerId ||
-                !connected ||
-                busy ||
-                sitRecoveryActive ||
-                (mySeat !== null ? maxAddChips <= 0 : maxBuyIn <= 0)
-              }
-            />
-          </div>
-        </div>
-        <div className="btn-row">
-          {mySeat !== null ? (
-            <>
-              <button
-                type="button"
-                className="secondary"
-                disabled={maxAddChips <= 0 || busy || sitRecoveryActive}
-                onClick={() => setBuyIn(String(maxAddChips))}
-              >
-                Max ({maxAddChips})
-              </button>
-              <button
-                type="button"
-                className={inRebuyGrace ? 'accent' : 'primary'}
-                disabled={
-                  !playerId ||
-                  !connected ||
-                  !addChipsValid ||
-                  maxAddChips <= 0 ||
-                  !mintPk ||
-                  !vaultTxReady ||
-                  sitRecoveryActive ||
-                  busy
-                }
-                onClick={() => void handleAddChips()}
-              >
-                {busy
-                  ? 'Potpis…'
-                  : inRebuyGrace
-                    ? 'Dopuni (rebuy)'
-                    : 'Dopuni chipove'}
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="secondary"
-                disabled={maxBuyIn <= 0 || busy || sitRecoveryActive}
-                onClick={() => setBuyIn(String(maxBuyIn))}
-              >
-                Max ({maxBuyIn})
-              </button>
-              <button
-                type="button"
-                className="primary"
-                disabled={
-                  !playerId ||
-                  !connected ||
-                  !buyInValid ||
-                  maxBuyIn <= 0 ||
-                  !mintPk ||
-                  !vaultTxReady ||
-                  sitRecoveryActive ||
-                  busy
-                }
-                onClick={() => void handleSit()}
-              >
-                {busy ? 'Potpis…' : `Sedni · mesto ${pickSeat + 1}`}
-              </button>
-            </>
-          )}
-          {sitRecovery ? (
-            <button
-              type="button"
-              className="accent"
-              disabled={!playerId || !connected || !idl || !mintPk || busy}
-              onClick={() => void handleRecoverLockedChips()}
-            >
-              {busy ? 'Potpis…' : 'Recover locked chips'}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="secondary"
-            disabled={
-              !playerId ||
-              !connected ||
-              mySeat === null ||
-              busy ||
-              sitRecoveryActive
-            }
-            onClick={() => void handleStand()}
-          >
-            {busy ? 'Potpis…' : 'Ustani'}
-          </button>
-          <button
-            type="button"
-            className="accent"
-            disabled={
-              !playerId || !connected || !canStart || busy || sitRecoveryActive
-            }
-            onClick={() => startHand()}
-          >
-            Nova ruka
-          </button>
-        </div>
-        {txMsg ? <p className="stats">{txMsg}</p> : null}
-        <p className="stats">
-          Za stolom: <strong>{seatedCount}</strong>/6
-          {mySeat !== null ? (
-            <>
-              {' · '}
-              Tvoj stack: <strong>{myStack}</strong>
-            </>
-          ) : null}
-        </p>
-      </div>
+      <PokerControlsPanel
+        skipVault={SKIP_VAULT}
+        tableMint={TABLE_MINT}
+        mintPk={mintPk}
+        vaultLoading={vaultLoading}
+        vaultChips={vaultChips}
+        playerId={playerId}
+        connected={connected}
+        onRefreshVault={refreshVault}
+        sitRecovery={sitRecovery}
+        mySeat={mySeat}
+        maxAddChips={maxAddChips}
+        maxBuyIn={maxBuyIn}
+        buyIn={buyIn}
+        onBuyInChange={handleBuyInChange}
+        buyInDisabled={
+          !playerId ||
+          !connected ||
+          busy ||
+          sitRecoveryActive ||
+          (mySeat !== null ? maxAddChips <= 0 : maxBuyIn <= 0)
+        }
+        busy={busy}
+        sitRecoveryActive={sitRecoveryActive}
+        inRebuyGrace={inRebuyGrace}
+        addChipsValid={addChipsValid}
+        buyInValid={buyInValid}
+        vaultTxReady={vaultTxReady}
+        pickSeat={pickSeat}
+        canStart={canStart}
+        seatedCount={seatedCount}
+        myStack={myStack}
+        txMsg={txMsg}
+        hasIdl={!!idl}
+        onMaxAddChips={() => setBuyIn(String(maxAddChips))}
+        onMaxBuyIn={() => setBuyIn(String(maxBuyIn))}
+        onAddChips={() => void handleAddChips()}
+        onSit={() => void handleSit()}
+        onRecoverLockedChips={() => void handleRecoverLockedChips()}
+        onStand={() => void handleStand()}
+        onStartHand={() => startHand()}
+      />
 
       {error ? <div className="err panel">{error}</div> : null}
     </div>

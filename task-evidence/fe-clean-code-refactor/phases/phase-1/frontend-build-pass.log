@@ -1,0 +1,22 @@
+npm run build --prefix solana/web
+
+> build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+458 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.50 kB | gzip:   0.34 kB
+dist/assets/index-CMmiyopn.css   23.35 kB | gzip:   5.68 kB
+dist/assets/index-wgfO2xww.js   760.99 kB | gzip: 229.59 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+built in 7.31s
+
+Exit code: 0 (PASS)
+Context: Commit 1 accepted — pre-acceptance cleanup (removed unused SEAT_POS from PokerPlay.tsx)

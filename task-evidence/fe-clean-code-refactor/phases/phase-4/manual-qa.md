@@ -3,7 +3,8 @@
 **Task:** fe-clean-code-refactor — Phase 4 vault config / IDL / PDA cleanup  
 **Commit 4a status:** **PASS — ACCEPTED**  
 **Commit 4b status:** **PASS — ACCEPTED**  
-**Final Phase 4 acceptance:** pending final acceptance note (not yet written)  
+**Commit 4.5 status:** **PASS — ACCEPTED**  
+**Final Phase 4 acceptance:** **ACCEPTED**  
 **Tester:** user (browser)  
 **Date:** 2026-06-24
 
@@ -105,3 +106,42 @@ Rezultati:
 - No push
 
 **Final 4b verdict:** **PASS — READY FOR COMMIT 4b**
+
+---
+
+## Commit 4.5 browser QA results
+
+**Scope:** StrictMode-safe IDL effect cleanup — console + regresija (skip-vault OK za ovaj test).
+
+### Dev / StrictMode
+
+- [x] Poker tab load — nema React unmounted setState warning u konzoli — PASS
+- [x] Brzo prebacivanje Poker → Vault → Poker — nema konzola warning-a — PASS
+
+### Vault tab (regresija)
+
+- [x] Vault load + refresh — PASS
+- [x] Deposit smoke — PASS
+- [x] Withdraw smoke — PASS
+
+### Poker tab (regresija)
+
+- [x] Vault balance prikaz — PASS
+- [x] Sit / stand smoke — PASS (skip-vault; 4.5 ne testira production lock/release)
+
+### Not in 4.5 scope — do not FAIL 4.5 for
+
+- Stand server timer / countdown / sit recovery UI
+- VaultPlay null IDL pending edge (pre-existing)
+- `response.ok` IDL handling
+
+## Status
+
+- Commit 4.5 implemented
+- Build PASS
+- Post-implementation review PASS
+- Manual QA PASS
+- No blocking bug found
+- No push
+
+**Final 4.5 verdict:** **PASS — READY FOR COMMIT 4.5**

@@ -39,7 +39,9 @@ export function VaultPlay() {
   const programId = useMemo(() => getTableVaultProgramId(), [])
 
   useEffect(() => {
+    let cancelled = false
     void loadTableVaultIdl().then((loaded) => {
+      if (cancelled) return
       setIdl(loaded)
       if (!loaded) {
         setErr(
@@ -47,6 +49,9 @@ export function VaultPlay() {
         )
       }
     })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const mintPk = useMemo(() => parseMintPublicKey(mintStr), [mintStr])

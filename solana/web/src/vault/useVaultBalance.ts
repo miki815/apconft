@@ -20,7 +20,14 @@ export function useVaultBalance(mintStr: string) {
   const mintPk = useMemo(() => parseMintPublicKey(mintStr), [mintStr])
 
   useEffect(() => {
-    void loadTableVaultIdl().then(setIdl)
+    let cancelled = false
+    void loadTableVaultIdl().then((loaded) => {
+      if (cancelled) return
+      setIdl(loaded)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const refresh = useCallback(async () => {

@@ -4,12 +4,9 @@ import type { Connection, PublicKey } from '@solana/web3.js'
 import { useEffect, useState } from 'react'
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react'
 import { lockForTable, releaseFromTable } from '../vault/tableVault'
+import { SKIP_VAULT } from '../vault/vaultConfig'
 import type { SitRecoveryState } from './types'
 import { preflightSitMessage, type AddChipsWaitResult, type PokerTableView } from './ws'
-
-const SKIP_VAULT =
-  import.meta.env.VITE_POKER_SKIP_VAULT_CHECK === '1' ||
-  import.meta.env.VITE_POKER_SKIP_VAULT_CHECK === 'true'
 
 export interface UsePokerSeatingParams {
   wallet: AnchorWallet | undefined

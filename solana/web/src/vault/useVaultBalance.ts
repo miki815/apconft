@@ -1,12 +1,12 @@
 import { useAnchorWallet, useConnection } from '@solana/wallet-adapter-react'
-import { PublicKey } from '@solana/web3.js'
 import type { Idl } from '@coral-xyz/anchor'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { loadTableVaultIdl } from './loadTableVaultIdl'
+import {
+  getTableVaultProgramId,
+  parseMintPublicKey,
+} from './vaultConfig'
 import { fetchVaultChipBalance } from './vaultBalance'
-
-const PROGRAM_ID_STR =
-  import.meta.env.VITE_PROGRAM_ID ||
-  '842JeffU95RE7xz8Bkdu2pQQ5GDNYhmKsQxusfeG9uzL'
 
 export function useVaultBalance(mintStr: string) {
   const { connection } = useConnection()
@@ -15,22 +15,12 @@ export function useVaultBalance(mintStr: string) {
   const [chips, setChips] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const programId = useMemo(() => new PublicKey(PROGRAM_ID_STR), [])
+  const programId = useMemo(() => getTableVaultProgramId(), [])
 
-  const mintPk = useMemo(() => {
-    if (!mintStr.trim()) return null
-    try {
-      return new PublicKey(mintStr.trim())
-    } catch {
-      return null
-    }
-  }, [mintStr])
+  const mintPk = useMemo(() => parseMintPublicKey(mintStr), [mintStr])
 
   useEffect(() => {
-    fetch('/idl/table_vault.json')
-      .then((r) => r.json())
-      .then(setIdl)
-      .catch(() => setIdl(null))
+    void loadTableVaultIdl().then(setIdl)
   }, [])
 
   const refresh = useCallback(async () => {

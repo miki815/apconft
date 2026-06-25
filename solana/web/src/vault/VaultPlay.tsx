@@ -14,10 +14,11 @@ import {
 import { useAnchorWallet, useConnection } from '@solana/wallet-adapter-react'
 import { PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-
-const PROGRAM_ID_STR =
-  import.meta.env.VITE_PROGRAM_ID ||
-  '842JeffU95RE7xz8Bkdu2pQQ5GDNYhmKsQxusfeG9uzL'
+import { loadTableVaultIdl } from './loadTableVaultIdl'
+import {
+  getTableVaultProgramId,
+  parseMintPublicKey,
+} from './vaultConfig'
 
 function vaultPdas(programId: PublicKey, mint: PublicKey) {
   const [vaultConfig] = PublicKey.findProgramAddressSync(
@@ -55,27 +56,20 @@ export function VaultPlay() {
   const [err, setErr] = useState<string | null>(null)
   const [idl, setIdl] = useState<Idl | null>(null)
 
-  const programId = useMemo(() => new PublicKey(PROGRAM_ID_STR), [])
+  const programId = useMemo(() => getTableVaultProgramId(), [])
 
   useEffect(() => {
-    fetch('/idl/table_vault.json')
-      .then((r) => r.json())
-      .then(setIdl)
-      .catch(() =>
+    void loadTableVaultIdl().then((loaded) => {
+      setIdl(loaded)
+      if (!loaded) {
         setErr(
           'Ne mogu učitati /idl/table_vault.json — u solana/web pokreni: npm run copy-idl',
-        ),
-      )
+        )
+      }
+    })
   }, [])
 
-  const mintPk = useMemo(() => {
-    if (!mintStr.trim()) return null
-    try {
-      return new PublicKey(mintStr.trim())
-    } catch {
-      return null
-    }
-  }, [mintStr])
+  const mintPk = useMemo(() => parseMintPublicKey(mintStr), [mintStr])
 
   const refreshBalances = useCallback(async () => {
     setErr(null)

@@ -1,8 +1,7 @@
-import { Idl } from '@coral-xyz/anchor'
 import { useAnchorWallet, useConnection } from '@solana/wallet-adapter-react'
 import { useEffect, useMemo, useState } from 'react'
-import { PublicKey } from '@solana/web3.js'
 import { useVaultBalance } from '../vault/useVaultBalance'
+import { SKIP_VAULT, TABLE_MINT } from '../vault/vaultConfig'
 import { PokerControlsPanel } from './PokerControlsPanel'
 import { PokerHeroBar } from './PokerHeroBar'
 import { PokerStatusBar } from './PokerStatusBar'
@@ -21,14 +20,6 @@ import { usePokerSeating } from './usePokerSeating'
 import { groupWinners } from './winners'
 import { usePokerWs } from './ws'
 
-const TABLE_MINT = import.meta.env.VITE_MINT || ''
-const PROGRAM_ID_STR =
-  import.meta.env.VITE_PROGRAM_ID ||
-  '842JeffU95RE7xz8Bkdu2pQQ5GDNYhmKsQxusfeG9uzL'
-const SKIP_VAULT =
-  import.meta.env.VITE_POKER_SKIP_VAULT_CHECK === '1' ||
-  import.meta.env.VITE_POKER_SKIP_VAULT_CHECK === 'true'
-
 export function PokerPlay() {
   const wallet = useAnchorWallet()
   const { connection } = useConnection()
@@ -46,22 +37,14 @@ export function PokerPlay() {
     act,
   } = usePokerWs(playerId)
 
-  const [idl, setIdl] = useState<Idl | null>(null)
   const {
     chips: vaultChips,
     loading: vaultLoading,
     refresh: refreshVault,
     mintPk,
+    idl,
+    programId,
   } = useVaultBalance(TABLE_MINT)
-
-  const programId = useMemo(() => new PublicKey(PROGRAM_ID_STR), [])
-
-  useEffect(() => {
-    fetch('/idl/table_vault.json')
-      .then((r) => r.json())
-      .then(setIdl)
-      .catch(() => setIdl(null))
-  }, [])
 
   const potDisplay = useMemo(() => {
     if (!table) {

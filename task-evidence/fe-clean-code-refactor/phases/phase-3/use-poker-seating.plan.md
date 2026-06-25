@@ -74,6 +74,14 @@ ws.ts contract, poker server, Anchor, `tableVault.ts`, `useVaultBalance.ts`, env
 
 ---
 
+## Phase 3.5 micro cleanup (follow-up)
+
+- Added explicit `UsePokerSeatingResult` export and return type on `usePokerSeating`
+- **No runtime behavior change** — TypeScript contract / IDE documentation only
+- Build: `phase-3-5-build-pass.log`
+
+---
+
 ## Next
 
 Phase 4+ when user approves scope.

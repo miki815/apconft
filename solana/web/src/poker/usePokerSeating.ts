@@ -1,7 +1,8 @@
 import { Idl } from '@coral-xyz/anchor'
 import type { AnchorWallet } from '@solana/wallet-adapter-react'
 import type { Connection, PublicKey } from '@solana/web3.js'
-import { useEffect, useState, type ChangeEvent } from 'react'
+import { useEffect, useState } from 'react'
+import type { ChangeEvent, Dispatch, SetStateAction } from 'react'
 import { lockForTable, releaseFromTable } from '../vault/tableVault'
 import type { SitRecoveryState } from './types'
 import { preflightSitMessage, type AddChipsWaitResult, type PokerTableView } from './ws'
@@ -37,6 +38,22 @@ export interface UsePokerSeatingParams {
   standAndWait: (releaseTx?: string) => Promise<string | null>
 }
 
+export interface UsePokerSeatingResult {
+  pickSeat: number
+  setPickSeat: Dispatch<SetStateAction<number>>
+  buyIn: string
+  setBuyIn: Dispatch<SetStateAction<string>>
+  busy: boolean
+  txMsg: string | null
+  sitRecovery: SitRecoveryState | null
+  sitRecoveryActive: boolean
+  handleBuyInChange: (e: ChangeEvent<HTMLInputElement>) => void
+  handleAddChips: () => Promise<void>
+  handleSit: () => Promise<void>
+  handleRecoverLockedChips: () => Promise<void>
+  handleStand: () => Promise<void>
+}
+
 export function usePokerSeating({
   wallet,
   connection,
@@ -55,7 +72,7 @@ export function usePokerSeating({
   checkAddChips,
   addChipsAndWait,
   standAndWait,
-}: UsePokerSeatingParams) {
+}: UsePokerSeatingParams): UsePokerSeatingResult {
   const [pickSeat, setPickSeat] = useState(0)
   const [buyIn, setBuyIn] = useState('200')
   const [busy, setBusy] = useState(false)

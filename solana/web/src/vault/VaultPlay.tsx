@@ -19,27 +19,7 @@ import {
   getTableVaultProgramId,
   parseMintPublicKey,
 } from './vaultConfig'
-
-function vaultPdas(programId: PublicKey, mint: PublicKey) {
-  const [vaultConfig] = PublicKey.findProgramAddressSync(
-    [Buffer.from('config'), mint.toBuffer()],
-    programId,
-  )
-  const vaultToken = getAssociatedTokenAddressSync(mint, vaultConfig, true)
-  return { vaultConfig, vaultToken }
-}
-
-function userBalancePda(
-  programId: PublicKey,
-  user: PublicKey,
-  mint: PublicKey,
-) {
-  const [userBalance] = PublicKey.findProgramAddressSync(
-    [Buffer.from('balance'), user.toBuffer(), mint.toBuffer()],
-    programId,
-  )
-  return userBalance
-}
+import { userBalancePda, vaultPdas } from './vaultPdas'
 
 export function VaultPlay() {
   const { connection } = useConnection()

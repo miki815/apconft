@@ -1,21 +1,9 @@
 import { AnchorProvider, BN, Idl, Program } from '@coral-xyz/anchor'
 import type { Idl as AnchorIdl } from '@coral-xyz/anchor'
 import { getMint } from '@solana/spl-token'
-import type { Connection } from '@solana/web3.js'
-import { PublicKey } from '@solana/web3.js'
+import type { Connection, PublicKey } from '@solana/web3.js'
 import type { AnchorWallet } from '@solana/wallet-adapter-react'
-
-export function userBalancePda(
-  programId: PublicKey,
-  user: PublicKey,
-  mint: PublicKey,
-) {
-  const [userBalance] = PublicKey.findProgramAddressSync(
-    [Buffer.from('balance'), user.toBuffer(), mint.toBuffer()],
-    programId,
-  )
-  return userBalance
-}
+import { userBalancePda } from './vaultPdas'
 
 /** Whole chips available in table vault (after deposit). */
 export async function fetchVaultChipBalance(

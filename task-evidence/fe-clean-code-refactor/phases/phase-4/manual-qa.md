@@ -1,8 +1,9 @@
-# Manual QA — Phase 4 Commit 4a
+# Manual QA — Phase 4 (Commits 4a + 4b)
 
-**Task:** fe-clean-code-refactor — Phase 4a vault config + IDL loader  
-**Overall status:** **PASS — Commit 4a manual QA ACCEPTED**  
-**Final Phase 4 acceptance:** pending Commit 4b + production vault QA  
+**Task:** fe-clean-code-refactor — Phase 4 vault config / IDL / PDA cleanup  
+**Commit 4a status:** **PASS — ACCEPTED**  
+**Commit 4b status:** **PASS — ACCEPTED**  
+**Final Phase 4 acceptance:** pending final acceptance note (not yet written)  
 **Tester:** user (browser)  
 **Date:** 2026-06-24
 
@@ -45,10 +46,11 @@ Env for skip-vault poker items: `VITE_POKER_SKIP_VAULT_CHECK=1` + `POKER_SKIP_VA
 
 ---
 
-## Pending for final Phase 4 acceptance (after 4b)
+## Pending for final Phase 4 acceptance
 
-- [ ] Production vault: deposit → sit lock → stand release → vault balance update
+- [x] Production vault: deposit → sit lock → stand release → vault balance update (covered in 4b QA)
 - [ ] Sit recovery UI best-effort
+- [ ] Final Phase 4 acceptance note (explicit sign-off)
 
 ## Do not FAIL 4a for
 
@@ -64,6 +66,42 @@ Env for skip-vault poker items: `VITE_POKER_SKIP_VAULT_CHECK=1` + `POKER_SKIP_VA
 |------|-------------------|-------|
 | Poker 4a smoke | PASS | All checklist items pass |
 | Vault 4a smoke | PASS | Load, balance, deposit/withdraw |
-| Production vault | SKIP / pending | Final after 4b |
+| Production vault | PASS | Covered in 4b QA (lock/release, balance) |
 
 **Final 4a verdict:** **PASS — READY FOR COMMIT 4a**
+
+---
+
+## Commit 4b browser QA results
+
+### Vault tab
+
+- [x] Vault load + refresh — PASS
+- [x] Deposit smoke — PASS
+- [x] Withdraw smoke — PASS
+
+### Poker tab / production vault
+
+Skip-vault je bio isključen:
+
+- `POKER_SKIP_VAULT_CHECK=1` nije aktivan
+- `VITE_POKER_SKIP_VAULT_CHECK=1` nije aktivan
+
+Rezultati:
+
+- [x] Poker vault balance prikaz — PASS
+- [x] Sit with vault check / lock tx — PASS
+- [x] Stand with vault release — PASS
+  - mesto oslobođeno
+  - novac vraćen
+
+## Status
+
+- Commit 4b implemented
+- Build PASS
+- Post-implementation review PASS
+- Manual QA PASS
+- No blocking bug found
+- No push
+
+**Final 4b verdict:** **PASS — READY FOR COMMIT 4b**

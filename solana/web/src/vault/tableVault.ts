@@ -3,15 +3,7 @@ import { getMint } from '@solana/spl-token'
 import type { Connection } from '@solana/web3.js'
 import { PublicKey } from '@solana/web3.js'
 import type { AnchorWallet } from '@solana/wallet-adapter-react'
-import { userBalancePda } from './vaultBalance'
-
-function vaultConfigPda(programId: PublicKey, mint: PublicKey) {
-  const [vaultConfig] = PublicKey.findProgramAddressSync(
-    [Buffer.from('config'), mint.toBuffer()],
-    programId,
-  )
-  return vaultConfig
-}
+import { userBalancePda, vaultConfigPda } from './vaultPdas'
 
 async function chipsToRaw(
   connection: Connection,

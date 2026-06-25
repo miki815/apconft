@@ -5,7 +5,11 @@
 **Initiative:** FE clean-code refactor (`solana/web`)  
 **Prior phase:** Phase 1 ACCEPTED (presentation extraction)
 
-## Approved scope: Full minus countdown
+Same MR: **two commits** — (1) helper/type cleanup Full minus countdown; (2) countdown helper extract follow-up.
+
+---
+
+## Commit 1 — Approved scope: Full minus countdown
 
 ### In scope (done)
 
@@ -17,57 +21,78 @@
 | `PokerWinnerBanner` | Remove `potLabel` prop; direct import from `./pots` |
 | `computeRaiseBounds` | `poker/betting.ts`; parent keeps `useMemo` wrapper |
 | `canStart` typing | Narrow prop to `boolean`; wrap compute with `Boolean(...)` |
-| Countdown | **Not extracted** — stays inline in `PokerPlay.tsx` |
+| Countdown | Deferred to follow-up commit in same MR |
 
-### Out of scope (unchanged)
+### Commit 1 files
 
-- `computeResultCountdownState` / countdown helper extract
-- Pre-existing countdown gap fix
+**New:** `types.ts`, `winners.ts`, `betting.ts`  
+**Modified:** `pots.ts`, `PokerPlay.tsx`, `PokerControlsPanel.tsx`, `PokerHeroBar.tsx`, `PokerWinnerBanner.tsx`
+
+---
+
+## Commit 2 — Follow-up: countdown helper extract (refactor only)
+
+**Status:** **ACCEPTED** (2026-06-24) — refactor smoke PASS; no behavior change.
+
+### In scope (done)
+
+| Item | Target |
+|------|--------|
+| `computeResultCountdownState` | `showdown.ts` — 1:1 move of inline derivacija iz `PokerPlay.tsx` |
+| `PokerPlay.tsx` | Poziv helper-a; isti JSX render branch za `ShowdownBar` / fallback |
+
+### Commit 2 files
+
+**Modified:**
+- `solana/web/src/poker/showdown.ts` — `computeResultCountdownState(table, resultPhase)`; koristi `isValidShowdownEndsAt`, `isValidResultDurationMs`, `isValidClockAnchor` iz `ws.ts`
+- `solana/web/src/poker/PokerPlay.tsx` — destructuring `{ resultEndsAt, resultDurationMs, countdownReady, showDeadlineFallback }`; uklonjeni direktni validator importi
+
+**Unchanged:** `ShowdownBar.tsx`, `ws.ts`, fallback tekst, countdown timing/guards/props.
+
+### Out of scope (commit 2 — unchanged)
+
+- 🐞 Silent third state / missing `clockAnchor` fallback fix
 - `PokerSeat` derivations
-- Phase 3+ (`usePokerSeating`, handlers, effects)
+- Phase 3+
+
+---
+
+## Out of scope (whole Phase 2 MR)
+
+- Pre-existing countdown gap fix (silent third state)
 - `ws.ts` split, Vault/IDL/PDA, `App.tsx`, `index.css`, `vite-env.d.ts`, env/package/backend/Anchor
-
-## Files changed
-
-### New
-
-- `solana/web/src/poker/types.ts`
-- `solana/web/src/poker/winners.ts`
-- `solana/web/src/poker/betting.ts`
-
-### Modified
-
-- `solana/web/src/poker/pots.ts` — `export function potLabel`
-- `solana/web/src/poker/PokerPlay.tsx` — imports; removed local types/helpers; `Boolean(canStart)`; no `potLabel` prop
-- `solana/web/src/poker/PokerControlsPanel.tsx` — import `SitRecoveryState`; `canStart: boolean`
-- `solana/web/src/poker/PokerHeroBar.tsx` — import `RaiseBounds` from `./types`
-- `solana/web/src/poker/PokerWinnerBanner.tsx` — import `WinnerGroup`, `potLabel`; removed prop
+- Phase 3+ (`usePokerSeating`, handlers, effects)
 
 ## Invariants preserved
 
-- `groupWinners`: Map insertion order for groups; per-group wins sorted by `potIndex`
-- `potLabel`: identical strings (`Glavni pot` / `Side pot N`)
-- `computeRaiseBounds`: 1:1 copy of former `useMemo` body
-- `canStart`: `Boolean(...)` — `undefined`/falsy still disables Nova ruka (same disabled behavior)
-- Countdown logic unchanged in parent (L129–136 area)
+- `groupWinners`, `potLabel`, `computeRaiseBounds`, `canStart` — unchanged from commit 1
+- `computeResultCountdownState`: 1:1 copy former inline logic; same validators; same render branch
+- Countdown behavior, timing, guards, prop values — **unchanged** (refactor only)
 
 ## Verification
 
-- Build: `npm run build --prefix solana/web` — **PASS** (`frontend-build-pass.log`, raw log)
-- Manual QA: **PASS — ACCEPTED** (`manual-qa.md`); item 8 (Nova ruka enabled) SKIP — acceptable
-- Preview / WS / linter: smoke notes only in `manual-qa.md`; no separate raw logs
+- Build (commit 1): PASS — initial run `index-CI_dlpNz.js`, ~20.52s
+- Build (commit 2 / final): **PASS** — `frontend-build-pass.log` (raw log, `index-Dneo6d2t.js`, ~24.04s)
+- Manual QA commit 1: **PASS — ACCEPTED** (`manual-qa.md` § User manual QA results)
+- Manual QA commit 2: **PASS — ACCEPTED** (`manual-qa.md` § Countdown helper extract smoke)
 
-## Acceptance notes
+## Acceptance notes (commit 1)
 
 - 2-player: winner banner `Glavni pot` +970
 - 3-player side pot: breakdown `Glavni pot 600`, `Side pot 1 360`
 - 3-player split/tie: 3 winner cards; `Glavni pot +200` all; `Side pot 1 +5` for two
 - Raise slider: min 20, max 200, `Raise 20` label
 - Skip-vault dev flow; vault production path not tested
-- Countdown visible but not Phase 2 scope
+
+## Acceptance notes (commit 2 — countdown smoke)
+
+- Countdown bar: `Sledeća ruka za Ns` visible
+- Winner banner works alongside countdown
+- Lifecycle continues normally after countdown
+- Silent third state **not tested** — remains van scope-a
 
 ## Next (deferred)
 
-- Separate small commit: countdown helper extract + optional gap fix
+- 🐞 Separate fix: silent third state (valid deadline + missing `clockAnchor`)
 - Phase 3: `usePokerSeating` / handler hooks
 - `PokerSeat` derivations micro-cleanup

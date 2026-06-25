@@ -10,13 +10,13 @@ rendering chunks...
 computing gzip size...
 dist/index.html                   0.50 kB │ gzip:   0.34 kB
 dist/assets/index-CMmiyopn.css   23.35 kB │ gzip:   5.68 kB
-dist/assets/index-CI_dlpNz.js   760.93 kB │ gzip: 229.56 kB
+dist/assets/index-Dneo6d2t.js   761.11 kB │ gzip: 229.60 kB
 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-✓ built in 20.52s
+✓ built in 24.04s
 npm notice
 npm notice New minor version of npm available! 11.16.0 -> 11.17.0
 npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.17.0
@@ -26,3 +26,4 @@ npm notice
 Exit code: 0
 Command: npm run build --prefix solana/web
 Date: 2026-06-24
+Note: post countdown helper extract follow-up (replaces prior Phase 2-only build log)

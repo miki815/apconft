@@ -13,15 +13,16 @@ import { RebuyGraceBar } from './RebuyGraceBar'
 import { ShowdownBar } from './ShowdownBar'
 import { computeRaiseBounds } from './betting'
 import { computeDisplayPots } from './pots'
-import { isResultDisplayActive, isShowdownPhase } from './showdown'
+import {
+  computeResultCountdownState,
+  isResultDisplayActive,
+  isShowdownPhase,
+} from './showdown'
 import type { SitRecoveryState } from './types'
 import { groupWinners } from './winners'
 import {
   preflightSitMessage,
   usePokerWs,
-  isValidClockAnchor,
-  isValidResultDurationMs,
-  isValidShowdownEndsAt,
 } from './ws'
 
 const TABLE_MINT = import.meta.env.VITE_MINT || ''
@@ -92,16 +93,12 @@ export function PokerPlay() {
   const rebuyDeadlineAt = table?.you.rebuyDeadlineAt ?? null
   const showdownPhase = useMemo(() => isShowdownPhase(table), [table])
   const resultPhase = useMemo(() => isResultDisplayActive(table), [table])
-  const resultEndsAt = table?.showdownEndsAt ?? null
-  const resultDurationMs = table?.resultDurationMs ?? null
-  const hasDeadlineFields =
-    isValidShowdownEndsAt(resultEndsAt) &&
-    isValidResultDurationMs(resultDurationMs)
-  const countdownReady =
-    resultPhase &&
-    hasDeadlineFields &&
-    isValidClockAnchor(table?.clockAnchor)
-  const showDeadlineFallback = resultPhase && !hasDeadlineFields
+  const {
+    resultEndsAt,
+    resultDurationMs,
+    countdownReady,
+    showDeadlineFallback,
+  } = computeResultCountdownState(table, resultPhase)
   const winnerGroups = useMemo(
     () => groupWinners(table?.state.winners ?? []),
     [table],

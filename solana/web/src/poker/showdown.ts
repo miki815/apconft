@@ -1,4 +1,9 @@
 import type { PokerTableView } from './ws'
+import {
+  isValidClockAnchor,
+  isValidResultDurationMs,
+  isValidShowdownEndsAt,
+} from './ws'
 
 /** Result display is the shared post-hand phase for showdown and fold wins. */
 export function isResultDisplayActive(table: PokerTableView | null): boolean {
@@ -17,4 +22,26 @@ export function isShowdownPhase(table: PokerTableView | null): boolean {
     (p) => p.status !== 'folded' && p.holeCards && p.holeCards.length >= 2,
   )
   return revealed.length >= 2
+}
+
+export function computeResultCountdownState(
+  table: PokerTableView | null,
+  resultPhase: boolean,
+) {
+  const resultEndsAt = table?.showdownEndsAt ?? null
+  const resultDurationMs = table?.resultDurationMs ?? null
+  const hasDeadlineFields =
+    isValidShowdownEndsAt(resultEndsAt) &&
+    isValidResultDurationMs(resultDurationMs)
+  const countdownReady =
+    resultPhase &&
+    hasDeadlineFields &&
+    isValidClockAnchor(table?.clockAnchor)
+  const showDeadlineFallback = resultPhase && !hasDeadlineFields
+  return {
+    resultEndsAt,
+    resultDurationMs,
+    countdownReady,
+    showDeadlineFallback,
+  }
 }

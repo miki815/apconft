@@ -1,11 +1,9 @@
-# Manual QA — Phase 2 (helper/type cleanup)
+# Manual QA — Phase 2 (helper/type cleanup + countdown follow-up)
 
-**Task:** fe-clean-code-refactor — Phase 2 Full minus countdown  
+**Task:** fe-clean-code-refactor — Phase 2 (same MR, two commits)  
 **Overall status:** **PASS — ACCEPTED** (2026-06-24)  
-**Build:** PASS — `frontend-build-pass.log` (raw terminal output)  
+**Build:** PASS — `frontend-build-pass.log` (raw terminal output; latest = post countdown extract)  
 **Tester:** user (browser)
-
-Manual browser QA completed. Countdown helper extract and vault production path remain out of scope.
 
 ---
 
@@ -13,15 +11,16 @@ Manual browser QA completed. Countdown helper extract and vault production path 
 
 | Check | Result | Raw log? |
 |-------|--------|----------|
-| `npm run build --prefix solana/web` | PASS | **Yes** — `frontend-build-pass.log` |
-| TypeScript compile via Vite build | PASS (same run) | same file |
+| `npm run build --prefix solana/web` (commit 1) | PASS | superseded by final log below |
+| `npm run build --prefix solana/web` (countdown follow-up) | PASS | **Yes** — `frontend-build-pass.log` |
+| TypeScript compile via Vite build | PASS (final run) | same file |
 | `npx vite preview` HTTP 200 | smoke note only | **No** raw log |
 | `npm run poker:server` WS listen | smoke note only | **No** raw log |
 | IDE linter on `solana/web/src/poker/` | clean at implementation time | **No** raw log |
 
 ---
 
-## User manual QA results
+## User manual QA — commit 1 (helper/type cleanup)
 
 | # | Scenario | Result | Notes |
 |---|----------|--------|-------|
@@ -36,22 +35,45 @@ Manual browser QA completed. Countdown helper extract and vault production path 
 | 9 | Basic sit + start + finish hand | **PASS** | skip-vault dev flow |
 | 10 | 3-player split/tie winner grouping | **PASS** | 3 winner cards; `Glavni pot +200` all; `Side pot 1 +5` for two |
 
-**Final manual QA verdict:** **PASS — ACCEPTED**
+Item 8 SKIP is acceptable for commit 1.
 
-Item 8 SKIP is acceptable: disabled-during-hand (7) PASS covers the Phase 2 `canStart`/`Boolean()` regression surface; enabled-after-hand was not manually captured due to auto-advancing lifecycle.
+---
+
+## User manual QA — commit 2 (countdown helper extract smoke)
+
+Refactor smoke only — no countdown behavior change expected.
+
+| # | Scenario | Result | Notes |
+|---|----------|--------|-------|
+| 1 | Poker tab load | **PASS** | |
+| 2 | Result/winner prikaz | **PASS** | |
+| 3 | Countdown bar prikazan | **PASS** | `Sledeća ruka za Ns` visible |
+| 4 | Winner banner pored countdown-a | **PASS** | |
+| 5 | Posle countdown-a lifecycle | **PASS** | Normal continuation |
+
+**Countdown follow-up verdict:** **PASS — ACCEPTED**
+
+🐞 Silent third state / missing `clockAnchor` fallback — **not tested**; remains out of scope (separate fix candidate).
+
+---
+
+## Final manual QA verdict
+
+**PASS — ACCEPTED** (commit 1 + commit 2 countdown smoke)
 
 ---
 
 ## Observations (not blocking)
 
-- Countdown visible in UI but **not Phase 2 scope** — countdown helper not extracted; not separately tested as acceptance criterion.
-- Vault lock/release production path **not tested** — skip-vault dev flow used (`VITE_POKER_SKIP_VAULT_CHECK=1` / `POKER_SKIP_VAULT_CHECK=1`).
+- Vault lock/release production path **not tested** — skip-vault dev flow used
+- Countdown refactor smoke confirms extract did not break normal countdown path
+- Silent third state fix **not included** in this MR
 
 ---
 
 ## Out of scope (not required for Phase 2 acceptance)
 
-- Countdown helper extract / deadline gap fix
+- 🐞 Silent third state / missing `clockAnchor` fallback fix
 - `PokerSeat` derivations
 - Vault lock/release production path
 - Sit recovery, RebuyGraceBar, Stand/Ustani

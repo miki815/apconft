@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   AddChipsWaitResult,
-  Card,
   PlayerAction,
   PokerTableView,
   SeatInfo,
-  ServerClockAnchor,
   TableState,
   YouState,
 } from './wsTypes'
+import {
+  isValidResultDurationMs,
+  isValidServerNow,
+  isValidShowdownEndsAt,
+} from './wsValidation'
 
 export type {
   AddChipsWaitResult,
@@ -25,44 +28,19 @@ export type {
   YouState,
 } from './wsTypes'
 
+export {
+  isValidClockAnchor,
+  isValidResultDurationMs,
+  isValidServerNow,
+  isValidShowdownEndsAt,
+} from './wsValidation'
+
+export { cardLabel, preflightSitMessage, shortPk } from './wsHelpers'
+
 const WS_URL =
   import.meta.env.VITE_POKER_WS_URL || 'ws://localhost:3081'
 
 const WS_TIMEOUT_MS = 12_000
-
-export function isValidServerNow(v: unknown): v is number {
-  return (
-    typeof v === 'number' &&
-    Number.isFinite(v) &&
-    Number.isSafeInteger(v) &&
-    v > 0
-  )
-}
-
-export function isValidShowdownEndsAt(v: unknown): v is number {
-  return (
-    typeof v === 'number' &&
-    Number.isFinite(v) &&
-    Number.isSafeInteger(v) &&
-    v > 0
-  )
-}
-
-export function isValidResultDurationMs(v: unknown): v is number {
-  return typeof v === 'number' && Number.isFinite(v) && v > 0
-}
-
-export function isValidClockAnchor(
-  a: ServerClockAnchor | null | undefined,
-): boolean {
-  if (a == null || typeof a !== 'object') return false
-  return (
-    isValidServerNow(a.serverNow) &&
-    typeof a.receivedAtPerformanceNow === 'number' &&
-    Number.isFinite(a.receivedAtPerformanceNow) &&
-    a.receivedAtPerformanceNow >= 0
-  )
-}
 
 type PendingRequest =
   | {
@@ -416,42 +394,3 @@ export function usePokerWs(playerId: string | null) {
   }
 }
 
-export function cardLabel(c: Card): string {
-  const r =
-    c.rank === 14
-      ? 'A'
-      : c.rank === 13
-        ? 'K'
-        : c.rank === 12
-          ? 'Q'
-          : c.rank === 11
-            ? 'J'
-            : c.rank === 10
-              ? 'T'
-              : String(c.rank)
-  const s =
-    c.suit === 'h'
-      ? '♥'
-      : c.suit === 'd'
-        ? '♦'
-        : c.suit === 'c'
-          ? '♣'
-          : '♠'
-  return `${r}${s}`
-}
-
-export function shortPk(pk: string): string {
-  return `${pk.slice(0, 4)}…${pk.slice(-4)}`
-}
-
-export function preflightSitMessage(
-  table: PokerTableView | null,
-  pickSeat: number,
-  buyIn: number,
-): string | null {
-  if (!table) return 'Nema podataka o stolu — sačekaj konekciju'
-  if (table.you.seat !== null) return 'Već si za stolom'
-  if (table.seats[pickSeat]) return `Mesto ${pickSeat + 1} je zauzeto`
-  if (!Number.isInteger(buyIn) || buyIn <= 0) return 'Unesi ispravan buy-in'
-  return null
-}

@@ -1,3 +1,4 @@
+// On-chain lock i release chipova iz vault kredita za buy-in i dopunu.
 import { AnchorProvider, BN, Idl, Program } from '@coral-xyz/anchor'
 import { getMint } from '@solana/spl-token'
 import type { Connection } from '@solana/web3.js'
@@ -14,6 +15,7 @@ async function chipsToRaw(
   return new BN(chips).mul(new BN(10).pow(new BN(mintInfo.decimals)))
 }
 
+// Zaključava buy-in iz vault-a pre slanja sit WS poruke.
 export async function lockForTable(
   connection: Connection,
   wallet: AnchorWallet,
@@ -41,6 +43,7 @@ export async function lockForTable(
     .rpc()
 }
 
+// Vraća chipove u vault posle stand-a ili recovery rollback-a.
 export async function releaseFromTable(
   connection: Connection,
   wallet: AnchorWallet,

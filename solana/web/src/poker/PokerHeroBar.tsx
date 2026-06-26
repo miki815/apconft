@@ -1,3 +1,4 @@
+// Donja hero zona sa tvojim kartama i dugmadima za poker akcije.
 import { PlayingCard } from './PlayingCard'
 import type { RaiseBounds } from './types'
 import type { Card, PlayerAction, PokerTableView } from './ws'

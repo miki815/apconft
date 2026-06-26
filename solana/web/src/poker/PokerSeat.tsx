@@ -1,3 +1,4 @@
+// Prikaz jednog mesta: igrač, stack, karte i izbor slobodnog mesta pre buy-in-a.
 import { PlayingCard } from './PlayingCard'
 import type { Card, PokerTableView } from './ws'
 import { cardLabel, shortPk } from './ws'

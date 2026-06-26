@@ -1,3 +1,4 @@
+// Seating flow: buy-in ulaz, vault lock/release i WS sit/stand/add-chips koraci.
 import { Idl } from '@coral-xyz/anchor'
 import type { AnchorWallet } from '@solana/wallet-adapter-react'
 import type { Connection, PublicKey } from '@solana/web3.js'
@@ -358,6 +359,7 @@ export function usePokerSeating({
     }
   }
 
+  // Vraća zaključane chipove u vault kad lock prođe a sit ili dopuna ne uspe.
   const handleRecoverLockedChips = async () => {
     if (!sitRecovery) return
     if (!wallet || !connected || !idl || !mintPk) {

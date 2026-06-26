@@ -1,3 +1,4 @@
+// WebSocket ka poker serveru — join, sync stola i akcije koje PokerPlay koristi.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   AddChipsWaitResult,
@@ -216,6 +217,7 @@ export function usePokerWs(playerId: string | null) {
     }
   }, [playerId, clearPending])
 
+  // Čeka odgovarajući server event ili timeout pre sledećeg WS koraka.
   const waitFor = useCallback(
     (pending: PendingRequestInit) =>
       new Promise<string | null>((resolve) => {
@@ -237,6 +239,7 @@ export function usePokerWs(playerId: string | null) {
     [clearPending],
   )
 
+  // Server preflight pre lock transakcije — potvrda buy-in-a i mesta.
   const checkSit = useCallback(
     async (seat: number, buyIn: number): Promise<string | null> => {
       send({ type: 'sit-check', seat, buyIn })
@@ -245,6 +248,7 @@ export function usePokerWs(playerId: string | null) {
     [send, waitFor],
   )
 
+  // Šalje sit posle lock-a i čeka potvrdu sedišta u table payload-u.
   const sitAndWait = useCallback(
     async (
       seat: number,
@@ -265,6 +269,7 @@ export function usePokerWs(playerId: string | null) {
     [send, waitFor],
   )
 
+  // Dopuna chipova sa lock tx — vraća appliesFromNextHand ili grešku.
   const addChipsAndWait = useCallback(
     async (amount: number, lockTx?: string): Promise<AddChipsWaitResult> =>
       new Promise((resolve) => {
@@ -288,6 +293,7 @@ export function usePokerWs(playerId: string | null) {
     [send, clearPending],
   )
 
+  // Šalje stand sa release tx i čeka da you.seat postane null.
   const standAndWait = useCallback(
     async (releaseTx?: string): Promise<string | null> =>
       new Promise((resolve) => {

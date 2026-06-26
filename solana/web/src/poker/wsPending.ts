@@ -1,3 +1,4 @@
+// Tipovi za jedan-u-vreme pending WS odgovor (sit, stand, add-chips).
 import type { AddChipsWaitResult } from './wsTypes'
 
 export type PendingRequest =

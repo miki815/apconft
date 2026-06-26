@@ -1,3 +1,4 @@
+// Vizuelni sto — community board, ukupan pot, breakdown i pozicije sedišta.
 import { CardRow } from './PlayingCard'
 import { PokerSeat } from './PokerSeat'
 import { PotBreakdown } from './PotBreakdown'

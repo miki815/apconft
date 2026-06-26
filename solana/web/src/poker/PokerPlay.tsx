@@ -1,3 +1,4 @@
+// Glavna Poker stranica — povezuje WS sto, vault, seating i UI komponente.
 import { useAnchorWallet, useConnection } from '@solana/wallet-adapter-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useVaultBalance } from '../vault/useVaultBalance'

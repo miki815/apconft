@@ -1,6 +1,8 @@
+// Derivacije za raise slider iz trenutnog server stanja stola.
 import type { PokerTableView } from './ws'
 import type { RaiseBounds } from './types'
 
+// Računa min/max raise iz minRaiseTo, currentBet i hero stack-a.
 export function computeRaiseBounds(
   table: PokerTableView | null,
   mySeat: number | null | undefined,

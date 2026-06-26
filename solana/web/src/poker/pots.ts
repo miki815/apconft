@@ -1,3 +1,4 @@
+// Priprema prikaz pot-ova i breakdown-a za sto tokom i posle ruke.
 import type { TableState } from './ws'
 
 export interface PotSlice {

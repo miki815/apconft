@@ -1,3 +1,4 @@
+// Učitava IDL i čita vault chip balance; izlaže programId i mint za poker seating.
 import { useAnchorWallet, useConnection } from '@solana/wallet-adapter-react'
 import type { Idl } from '@coral-xyz/anchor'
 import { useCallback, useEffect, useMemo, useState } from 'react'

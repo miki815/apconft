@@ -1,3 +1,4 @@
+// Zajedničke env vrednosti i program/mint helperi za Vault i Poker tab.
 import { PublicKey } from '@solana/web3.js'
 
 export const DEFAULT_TABLE_VAULT_PROGRAM_ID =

@@ -1,3 +1,4 @@
+// Traka iznad stola: Live/Offline status, skraćeni wallet ID i blindi tokom ruke.
 import { shortPk } from './ws'
 
 interface PokerStatusBarProps {

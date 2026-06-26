@@ -1,3 +1,4 @@
+// Javna poker WS površina — tipovi, validatori, helperi i usePokerWs hook.
 export type {
   AddChipsWaitResult,
   Card,

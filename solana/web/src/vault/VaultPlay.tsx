@@ -1,3 +1,4 @@
+// Vault tab — deposit/withdraw i prikaz SOL, wallet token i vault kredita.
 import {
   AnchorProvider,
   BN,

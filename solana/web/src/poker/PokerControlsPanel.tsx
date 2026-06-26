@@ -1,3 +1,4 @@
+// Panel za buy-in, sedi/ustani, dopunu chipova i pokretanje nove ruke.
 import type { ChangeEvent } from 'react'
 import type { PublicKey } from '@solana/web3.js'
 import type { SitRecoveryState } from './types'

@@ -1,3 +1,4 @@
+// Runtime provere server polja pre countdown prikaza i clock sync-a.
 import type { ServerClockAnchor } from './wsTypes'
 
 export function isValidServerNow(v: unknown): v is number {

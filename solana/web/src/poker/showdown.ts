@@ -1,3 +1,4 @@
+// Helperi za showdown/result fazu i countdown prikaz posle ruke.
 import type { PokerTableView } from './ws'
 import {
   isValidClockAnchor,
@@ -24,6 +25,7 @@ export function isShowdownPhase(table: PokerTableView | null): boolean {
   return revealed.length >= 2
 }
 
+// Mapira server deadline polja u countdown props i fallback flag za ShowdownBar.
 export function computeResultCountdownState(
   table: PokerTableView | null,
   resultPhase: boolean,

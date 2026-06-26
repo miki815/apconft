@@ -1,3 +1,4 @@
+// PDA adrese table_vault programa — user balance, vault config i token account.
 import { getAssociatedTokenAddressSync } from '@solana/spl-token'
 import { PublicKey } from '@solana/web3.js'
 

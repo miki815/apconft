@@ -1,3 +1,4 @@
+// Čita on-chain vault chip balance za povezan wallet (posle depozita).
 import { AnchorProvider, BN, Idl, Program } from '@coral-xyz/anchor'
 import type { Idl as AnchorIdl } from '@coral-xyz/anchor'
 import { getMint } from '@solana/spl-token'

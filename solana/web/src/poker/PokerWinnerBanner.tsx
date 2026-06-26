@@ -1,3 +1,4 @@
+// Banner posle završetka ruke — dobitnici, pot-ovi i payout po igraču.
 import { potLabel } from './pots'
 import type { WinnerGroup } from './types'
 import type { PokerTableView } from './ws'

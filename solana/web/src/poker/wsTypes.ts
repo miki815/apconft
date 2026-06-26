@@ -1,3 +1,4 @@
+// Tipovi poker WebSocket poruka i PokerTableView stanja koje UI koristi.
 export type Suit = 'c' | 'd' | 'h' | 's'
 export type Rank = number
 export interface Card {

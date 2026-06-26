@@ -1,3 +1,4 @@
+// Deljeni tipovi za seating recovery, winner grupe i raise granice u poker UI.
 import type { WinnerResult } from './ws'
 
 export interface SitRecoveryState {

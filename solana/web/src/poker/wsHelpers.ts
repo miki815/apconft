@@ -1,3 +1,4 @@
+// Formatiranje kartica/wallet ID i client preflight pre WS/vault koraka.
 import type { Card, PokerTableView } from './wsTypes'
 
 export function cardLabel(c: Card): string {
@@ -28,6 +29,7 @@ export function shortPk(pk: string): string {
   return `${pk.slice(0, 4)}…${pk.slice(-4)}`
 }
 
+// Brza provera pre lock transakcije i sit-check WS poziva.
 export function preflightSitMessage(
   table: PokerTableView | null,
   pickSeat: number,

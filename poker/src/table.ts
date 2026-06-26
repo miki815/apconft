@@ -1,5 +1,5 @@
 import { createDeck, shuffleDeck } from './deck.js'
-import { compareHands, evaluateBest } from './hand-eval.js'
+import { categoryName, compareHands, evaluateBest } from './hand-eval.js'
 import { buildPots, splitPot } from './pot.js'
 import type {
   ActionResult,
@@ -216,9 +216,16 @@ export class HoldemTable {
       case 'call': {
         const toCall = this.currentBet - player.betThisRound
         if (toCall <= 0) return this.fail('Nothing to call')
-        this.commitChips(player, toCall)
+        const effectiveCall = Math.min(toCall, player.stack)
+        this.commitChips(player, effectiveCall)
+        if (player.stack === 0) player.status = 'all-in'
         this.needsAction.delete(player.seat)
-        this.setRoundAction(player.seat, `Call ${toCall}`)
+        this.setRoundAction(
+          player.seat,
+          effectiveCall < toCall
+            ? `Call all-in ${effectiveCall}`
+            : `Call ${toCall}`,
+        )
         break
       }
       case 'bet': {
@@ -371,6 +378,9 @@ export class HoldemTable {
       }
       this.needsAction.clear()
       this.actionSeat = null
+      if (this.board.length === 5 && !this.handComplete) {
+        this.showdown()
+      }
       return
     }
 
@@ -402,6 +412,10 @@ export class HoldemTable {
     }
 
     this.actionSeat = this.firstPostflopActionSeat()
+    if (this.actionSeat === null) {
+      this.runOutBoard()
+      this.showdown()
+    }
   }
 
   private nextStreet(): BettingRound {
@@ -495,7 +509,19 @@ export class HoldemTable {
 
       const shares = splitPot(pot.amount, bestIds)
       for (const s of shares) {
-        this.winners.push({ playerId: s.playerId, amount: s.amount, potIndex: i })
+        this.winners.push({
+          playerId: s.playerId,
+          amount: s.amount,
+          potIndex: i,
+          ...(bestEval
+            ? {
+                handRank: {
+                  category: bestEval.category,
+                  name: categoryName(bestEval.category),
+                },
+              }
+            : {}),
+        })
         const pl = this.players.find((p) => p.id === s.playerId)!
         pl.stack += s.amount
       }
@@ -568,10 +594,12 @@ export class HoldemTable {
     return this.nextSeatAfter(this.blindSeat('bb'))
   }
 
-  private firstPostflopActionSeat(): number {
+  private firstPostflopActionSeat(): number | null {
     const n = this.seatsInHandCount()
-    if (n === 2) return this.buttonSeat
-    return this.nextSeatAfter(this.buttonSeat)
+    const preferred = n === 2 ? this.buttonSeat : this.nextSeatAfter(this.buttonSeat)
+    const player = this.playerAtSeat(preferred)
+    if (player && this.canPlayerAct(player)) return preferred
+    return this.nextActionSeat(preferred)
   }
 
   private nextActionSeat(from: number): number | null {

@@ -33,8 +33,14 @@ export type ServerMessage =
       bigBlind: number
       handInProgress: boolean
       showdownActive: boolean
-      /** Unix ms when showdown phase ends; null if not in showdown */
+      /** Unix ms when the current result display ends; null outside result display. */
       showdownEndsAt: number | null
+      /** Result display kind; fold results do not reveal cards. */
+      resultKind: 'showdown' | 'fold' | null
+      /** Server-authoritative result display duration, used for countdown progress. */
+      resultDurationMs: number | null
+      /** Unix ms on server when this table message was sent (per connection). */
+      serverNow: number
       you: YouState
     }
   | { type: 'error'; message: string }
@@ -48,6 +54,8 @@ export interface YouState {
   toCall: number
   /** Unix ms when rebuy grace ends; null if not in grace */
   rebuyDeadlineAt: number | null
+  /** Chips releasable on stand (stack + pending add-chips not yet in stack) */
+  releasableStack: number
 }
 
 export const DEFAULT_TABLE_ID = 'main'

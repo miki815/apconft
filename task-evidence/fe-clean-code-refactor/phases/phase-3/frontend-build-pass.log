@@ -1,0 +1,28 @@
+npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 461 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.50 kB │ gzip:   0.34 kB
+dist/assets/index-CMmiyopn.css   23.35 kB │ gzip:   5.68 kB
+dist/assets/index-Hqv6Y6JY.js   761.89 kB │ gzip: 229.85 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 20.28s
+npm notice
+npm notice New minor version of npm available! 11.16.0 -> 11.17.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.17.0
+npm notice To update run: npm install -g npm@11.17.0
+npm notice
+
+Exit code: 0
+Command: npm run build --prefix solana/web
+Date: 2026-06-24

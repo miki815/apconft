@@ -1,3 +1,4 @@
+/* —— Base / tokens —— */
 * {
   box-sizing: border-box;
 }
@@ -1155,6 +1156,7 @@ button.btn-allin {
   font-size: 0.8rem;
 }
 
+/* —— Winner banner —— */
 .winner-banner {
   display: flex;
   flex-direction: column;
@@ -1285,6 +1287,7 @@ button.btn-allin {
   }
 }
 
+/* —— Showdown countdown bar —— */
 .showdown-bar-wrap {
   display: flex;
   flex-direction: column;
@@ -1317,6 +1320,7 @@ button.btn-allin {
   color: #8fa3bb;
 }
 
+/* —— Poker controls —— */
 .poker-controls {
   margin-top: 0.25rem;
 }

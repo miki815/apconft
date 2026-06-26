@@ -272,4 +272,3 @@ Ovaj roadmap **ne sadrži fazne commit-e**. Pre bilo kakve implementacije inicij
 | Production kod | **Nije menjan** |
 | Postojeći evidence folderi | **Nisu menjan** |
 | Commit / push | **Nije urađen** |
-| Sledeći korak | Korisnik otvara **Inicijativu 1 (C)** → posebna analiza + fazni plan |

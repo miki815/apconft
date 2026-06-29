@@ -10,6 +10,8 @@ import { loadVaultIdl } from './vaultBalance.js'
 
 export type TableVaultIx = 'lock_for_table' | 'release_from_table'
 
+const VERIFY_TX_RETRY_DELAYS_MS = [500, 1000, 1500] as const
+
 export async function chipsToRaw(
   connection: Connection,
   mint: PublicKey,
@@ -30,10 +32,7 @@ export async function verifyTableVaultTx(
   const idl = loadVaultIdl()
   if (!idl) return 'table_vault IDL not found — run: cd solana && anchor build'
 
-  const tx = await connection.getTransaction(signature, {
-    commitment: 'confirmed',
-    maxSupportedTransactionVersion: 0,
-  })
+  const tx = await getConfirmedTransactionWithRetry(connection, signature)
   if (!tx) return 'Transaction not found or not confirmed'
   if (tx.meta?.err) return 'Transaction failed on-chain'
 
@@ -76,6 +75,29 @@ export async function verifyTableVaultTx(
   }
 
   return null
+}
+
+async function getConfirmedTransactionWithRetry(
+  connection: Connection,
+  signature: string,
+): Promise<VersionedTransactionResponse | null> {
+  for (let attempt = 0; attempt <= VERIFY_TX_RETRY_DELAYS_MS.length; attempt++) {
+    const tx = await connection.getTransaction(signature, {
+      commitment: 'confirmed',
+      maxSupportedTransactionVersion: 0,
+    })
+    if (tx) return tx
+
+    const delayMs = VERIFY_TX_RETRY_DELAYS_MS[attempt]
+    if (delayMs === undefined) break
+    await sleep(delayMs)
+  }
+
+  return null
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function collectInstructions(tx: VersionedTransactionResponse) {

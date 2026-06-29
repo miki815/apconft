@@ -1,3 +1,4 @@
+/* —— Base / tokens —— */
 * {
   box-sizing: border-box;
 }
@@ -130,16 +131,6 @@ body {
   overflow: visible;
 }
 
-.panel--actions {
-  border-color: rgba(92, 158, 255, 0.35);
-  background: linear-gradient(180deg, #152238 0%, #121a28 100%);
-}
-
-.panel--waiting {
-  text-align: center;
-  padding: 0.75rem;
-}
-
 .panel-title {
   font-size: 0.95rem;
   font-weight: 600;
@@ -195,10 +186,6 @@ select {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.25rem;
-}
-
-.btn-row--actions {
-  gap: 0.45rem;
 }
 
 button.primary {
@@ -299,16 +286,6 @@ button.btn-allin {
   word-break: break-all;
 }
 
-.action-hint {
-  font-size: 0.85rem;
-  color: #9aa8bc;
-  margin: 0 0 0.75rem;
-}
-
-.action-hint strong {
-  color: var(--gold);
-}
-
 /* —— Table —— */
 .table-visual {
   position: relative;
@@ -317,21 +294,6 @@ button.btn-allin {
   aspect-ratio: 1.05;
   margin: 0 auto;
   border-radius: 50% / 46%;
-}
-
-.table-visual--vault {
-  max-width: 340px;
-  aspect-ratio: 1;
-  background: radial-gradient(
-    circle at 50% 45%,
-    var(--felt) 0%,
-    var(--felt-dark) 62%,
-    #0a1210 100%
-  );
-  border: 5px solid var(--rail);
-  box-shadow:
-    inset 0 0 50px rgba(0, 0, 0, 0.35),
-    0 8px 32px rgba(0, 0, 0, 0.45);
 }
 
 .table-visual--showdown {
@@ -419,14 +381,6 @@ button.btn-allin {
   flex-shrink: 0;
 }
 
-.pot-title {
-  display: block;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.65rem;
-  opacity: 0.85;
-}
-
 .pot-icon {
   display: grid;
   place-items: center;
@@ -452,6 +406,160 @@ button.btn-allin {
   margin-top: 0;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
   line-height: 1.1;
+}
+
+.pot-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+  font-size: 0.62rem;
+  line-height: 1.25;
+  color: #8fa3bb;
+}
+
+.poker-table-section--pot-breakdown.panel--flush {
+  overflow: visible;
+}
+
+.poker-table-wrap--pot-breakdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.poker-table-wrap--pot-breakdown .pot-breakdown {
+  position: static;
+  width: 100%;
+  max-width: 18rem;
+  margin: 2rem auto 0.35rem;
+  padding: 0;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  max-height: 9rem;
+  overflow-x: visible;
+  overflow-y: auto;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.poker-table-wrap--pot-breakdown .pot-breakdown-row {
+  padding: 0.35rem 0.45rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.poker-table-wrap--pot-breakdown .pot-breakdown-row--main {
+  background: rgba(10, 16, 26, 0.78);
+}
+
+.poker-table-wrap--pot-breakdown .pot-breakdown-eligible {
+  font-size: 0.68rem;
+  line-height: 1.2;
+  color: #8fa3bb;
+}
+
+.poker-table-wrap--pot-breakdown .pot-breakdown-label {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.poker-table-wrap--pot-breakdown .pot-breakdown-row:not(.pot-breakdown-row--main) .pot-breakdown-label {
+  font-size: 0.68rem;
+}
+
+.poker-table-wrap--pot-breakdown .pot-breakdown-amount {
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.pot-breakdown-row {
+  padding: 0.2rem 0.35rem;
+  border-radius: 6px;
+  border: 1px solid rgba(122, 143, 168, 0.22);
+  background: rgba(10, 16, 26, 0.5);
+}
+
+.pot-breakdown-row--main {
+  border-color: rgba(122, 143, 168, 0.38);
+  background: rgba(10, 16, 26, 0.72);
+}
+
+.pot-breakdown-row--mine {
+  border-color: rgba(92, 158, 255, 0.35);
+  background: rgba(92, 158, 255, 0.08);
+  border-left: 2px solid rgba(92, 158, 255, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(92, 158, 255, 0.12),
+    0 0 14px rgba(92, 158, 255, 0.06);
+}
+
+.pot-breakdown-row--main.pot-breakdown-row--mine {
+  border-color: rgba(92, 158, 255, 0.38);
+  background: rgba(92, 158, 255, 0.1);
+}
+
+.pot-breakdown-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.pot-breakdown-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #8fa3bb;
+}
+
+.pot-breakdown-label::before {
+  content: '';
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 35%,
+    rgba(255, 230, 160, 0.95) 0%,
+    var(--gold) 45%,
+    rgba(180, 130, 30, 0.9) 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 220, 160, 0.35),
+    0 0 6px rgba(240, 193, 75, 0.25);
+  opacity: 0.72;
+}
+
+.pot-breakdown-row--main .pot-breakdown-label {
+  font-weight: 700;
+  color: #a8b8cc;
+}
+
+.pot-breakdown-row--main .pot-breakdown-label::before {
+  width: 8px;
+  height: 8px;
+  opacity: 0.95;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 220, 160, 0.45),
+    0 0 8px rgba(240, 193, 75, 0.32);
+}
+
+.pot-breakdown-amount {
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.pot-breakdown-eligible {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.58rem;
+  color: #6f849c;
+  word-break: break-word;
 }
 
 .board-zone {
@@ -542,6 +650,13 @@ button.btn-allin {
   animation: pulse-seat 1.2s ease-in-out infinite;
 }
 
+.seat--poker.winner {
+  border-color: var(--success);
+  box-shadow:
+    0 0 0 3px rgba(93, 222, 168, 0.32),
+    0 0 22px rgba(93, 222, 168, 0.22);
+}
+
 .seat--poker.folded {
   opacity: 0.45;
 }
@@ -605,35 +720,9 @@ button.btn-allin {
   border-color: rgba(240, 193, 75, 0.4);
 }
 
-.seat-bet {
-  font-size: 0.65rem;
-  color: #7dffb3;
-  margin-top: 0.1rem;
-}
-
 .seat-empty-label {
   font-size: 0.65rem;
   color: #6a8098;
-}
-
-/* Vault seats (circles) */
-.table-visual--vault .seat {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: #2d3a4d;
-  border: 2px solid #4a5f78;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.table-visual--vault .seat.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(92, 158, 255, 0.35);
-}
-
-.table-visual--vault .seat.you {
-  background: #2a3f66;
 }
 
 /* —— Playing cards —— */
@@ -844,6 +933,24 @@ button.btn-allin {
 
 .poker-table-wrap {
   padding: 0.5rem 0 0;
+  margin-bottom: 0.35rem;
+}
+
+@media (max-width: 540px) {
+  .poker-table-wrap--pot-breakdown .pot-breakdown {
+    margin: 1.25rem auto 0.4rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pot-breakdown-label::before {
+    width: 6px;
+    height: 6px;
+  }
+
+  .pot-breakdown-row--main .pot-breakdown-label::before {
+    width: 7px;
+    height: 7px;
+  }
 }
 
 .hero-bar {
@@ -851,9 +958,13 @@ button.btn-allin {
   align-items: center;
   justify-content: center;
   gap: 1rem 1.25rem;
-  margin-top: 1.25rem;
+  margin-top: 1.6rem;
   padding: 0 0.75rem 0.25rem;
   flex-wrap: wrap;
+}
+
+.poker-table-section.panel--showdown .hero-bar {
+  margin-top: 2.1rem;
 }
 
 .hero-hand {
@@ -862,11 +973,13 @@ button.btn-allin {
 }
 
 .hero-hand-label {
-  font-size: 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: #7a8fa8;
+  color: #a8b8cc;
   margin: 0 0 0.5rem;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
 }
 
 .hero-hand-cards {
@@ -970,11 +1083,12 @@ button.btn-allin {
   font-size: 0.8rem;
 }
 
+/* —— Winner banner —— */
 .winner-banner {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
   padding: 0.85rem 1rem;
   margin-bottom: 1rem;
   border-radius: 12px;
@@ -991,18 +1105,125 @@ button.btn-allin {
   width: 100%;
 }
 
+.winner-banner-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+}
+
 .winner-chip {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: min(100%, 9rem);
+  max-width: 100%;
+  padding: 0.4rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid rgba(240, 193, 75, 0.25);
+  border-top: 2px solid rgba(240, 193, 75, 0.45);
+  background: rgba(14, 20, 30, 0.55);
   font-size: 0.85rem;
   color: #c5d4e8;
 }
 
-.winner-chip strong {
-  color: var(--success);
+.winner-chip--you {
+  border-left: 3px solid var(--accent);
 }
 
+.winner-chip-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-bottom: 0.22rem;
+  border-bottom: 1px dashed rgba(240, 193, 75, 0.2);
+  font-weight: 700;
+}
+
+.winner-chip-name {
+  min-width: 0;
+}
+
+.winner-chip--you .winner-chip-name {
+  color: var(--accent);
+}
+
+.winner-chip-total {
+  flex-shrink: 0;
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
+}
+
+.winner-chip-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 0.18rem;
+}
+
+.winner-pot-row {
+  padding: 0.18rem 0;
+}
+
+.winner-pot-row + .winner-pot-row {
+  border-top: 1px dashed rgba(255, 255, 255, 0.06);
+}
+
+.winner-pot-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.winner-pot-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #8fa3bb;
+}
+
+.winner-pot-row--main .winner-pot-label {
+  font-weight: 700;
+  color: #a8b8cc;
+}
+
+.winner-pot-amount {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.winner-pot-rank {
+  display: block;
+  margin-top: 0.05rem;
+  padding-left: 0.12rem;
+  font-size: 0.65rem;
+  line-height: 1.2;
+  color: #6f849c;
+  word-break: break-word;
+}
+
+@media (max-width: 540px) {
+  .winner-chip {
+    padding: 0.38rem 0.48rem;
+  }
+}
+
+/* —— Showdown countdown bar —— */
 .showdown-bar-wrap {
-  height: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   margin: 0.85rem 1rem 0;
+}
+
+.showdown-bar-track {
+  height: 6px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.35);
   overflow: hidden;
@@ -1016,18 +1237,17 @@ button.btn-allin {
   transform: scaleX(1);
   background: linear-gradient(90deg, var(--gold) 0%, var(--success) 100%);
   box-shadow: 0 0 12px rgba(240, 193, 75, 0.45);
-  animation: showdown-drain linear forwards;
 }
 
-@keyframes showdown-drain {
-  from {
-    transform: scaleX(1);
-  }
-  to {
-    transform: scaleX(0);
-  }
+.showdown-bar-text,
+.showdown-bar-fallback {
+  margin: 0;
+  text-align: center;
+  font-size: 0.72rem;
+  color: #8fa3bb;
 }
 
+/* —— Poker controls —— */
 .poker-controls {
   margin-top: 0.25rem;
 }

@@ -188,10 +188,6 @@ select {
   margin-top: 0.25rem;
 }
 
-.btn-row--actions {
-  gap: 0.45rem;
-}
-
 button.primary {
   padding: 0.6rem 1.1rem;
   border-radius: 10px;
@@ -383,14 +379,6 @@ button.btn-allin {
   position: static;
   transform: none;
   flex-shrink: 0;
-}
-
-.pot-title {
-  display: block;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.65rem;
-  opacity: 0.85;
 }
 
 .pot-icon {
@@ -730,12 +718,6 @@ button.btn-allin {
   background: rgba(240, 193, 75, 0.2);
   color: var(--gold);
   border-color: rgba(240, 193, 75, 0.4);
-}
-
-.seat-bet {
-  font-size: 0.65rem;
-  color: #7dffb3;
-  margin-top: 0.1rem;
 }
 
 .seat-empty-label {

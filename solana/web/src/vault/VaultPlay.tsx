@@ -20,6 +20,11 @@ import {
   getTableVaultProgramId,
   parseMintPublicKey,
 } from './vaultConfig'
+import {
+  formatSolFromLamports,
+  formatSplHumanAmount,
+  humanToRaw,
+} from './vaultAmount'
 import { userBalancePda, vaultPdas } from './vaultPdas'
 
 export function VaultPlay() {
@@ -71,7 +76,7 @@ export function VaultPlay() {
 
     try {
       const sol = await connection.getBalance(pk)
-      setSolBal((sol / 1e9).toFixed(4))
+      setSolBal(formatSolFromLamports(sol))
 
       const mintInfo = await getMint(connection, mintPk)
       setMintDecimals(mintInfo.decimals)
@@ -79,8 +84,9 @@ export function VaultPlay() {
       const userAta = getAssociatedTokenAddressSync(mintPk, pk)
       try {
         const acc = await getAccount(connection, userAta)
-        const v = Number(acc.amount) / 10 ** mintInfo.decimals
-        setWalletTokenBal(v.toFixed(Math.min(mintInfo.decimals, 6)))
+        setWalletTokenBal(
+          formatSplHumanAmount(Number(acc.amount), mintInfo.decimals),
+        )
       } catch {
         setWalletTokenBal('0 (nema ATA)')
       }
@@ -97,11 +103,7 @@ export function VaultPlay() {
         const amt = row.amount as BN
         const raw =
           typeof amt.toNumber === 'function' ? amt.toNumber() : Number(amt)
-        setVaultCredit(
-          (raw / 10 ** mintInfo.decimals).toFixed(
-            Math.min(mintInfo.decimals, 6),
-          ),
-        )
+        setVaultCredit(formatSplHumanAmount(raw, mintInfo.decimals))
       } catch {
         setVaultCredit('0')
       }
@@ -113,13 +115,6 @@ export function VaultPlay() {
   useEffect(() => {
     void refreshBalances()
   }, [refreshBalances])
-
-  const humanToRaw = (human: string): BN | null => {
-    if (mintDecimals === null) return null
-    const n = parseFloat(human.replace(',', '.'))
-    if (!Number.isFinite(n) || n <= 0) return null
-    return new BN(Math.round(n * 10 ** mintDecimals))
-  }
 
   const ensureProgram = (): Program | null => {
     if (!idl || !anchorWallet?.publicKey || !anchorWallet.signTransaction)
@@ -164,7 +159,7 @@ export function VaultPlay() {
 
   const doDeposit = async () => {
     const program = ensureProgram()
-    const raw = humanToRaw(amountHuman)
+    const raw = humanToRaw(amountHuman, mintDecimals)
     if (!program || !anchorWallet?.publicKey || !mintPk || !raw) {
       setErr('Poveži novčanik, validan mint i iznos.')
       return
@@ -201,7 +196,7 @@ export function VaultPlay() {
 
   const doWithdraw = async () => {
     const program = ensureProgram()
-    const raw = humanToRaw(amountHuman)
+    const raw = humanToRaw(amountHuman, mintDecimals)
     if (
       !program ||
       !anchorWallet?.publicKey ||

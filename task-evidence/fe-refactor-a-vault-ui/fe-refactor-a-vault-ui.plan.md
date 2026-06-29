@@ -2,10 +2,11 @@
 
 **Tip:** FE refactor (clean-code, 0 ponašanja)  
 **Globalni roadmap:** `task-evidence/fe-global-refactor-roadmap/fe-global-refactor-roadmap.plan.md` (Inicijativa 3/7)  
-**Status inicijative:** A1 **implementirana** — build **PASS**; manual QA **PASS**; **pending commit**; push **nije urađen**  
+**Status inicijative:** A1 **DONE** (`be1eab3`, pushed); **A1-test cancelled/deferred** (korisnička odluka); **sledeća faza: A2**  
 **Primarni FE reference:** `FRONTEND_TECHNOLOGY_RESEARCH.md` §4.5, §4.6, §4.8, §4.9, §6
 
-**Commit / push:** nisu urađeni pri kreiranju ovog plana.
+**A1 commit:** `be1eab3` — `refactor(web): izdvoji pure vault amount helper-e (A1)`  
+**Branch:** `feature/refactor-web-vault-ui` (usklađen sa `origin`)
 
 ---
 
@@ -24,7 +25,7 @@ Organizovati Vault tab monolit [`solana/web/src/vault/VaultPlay.tsx`](../../sola
 | **A4** | **Planirana kasnija faza** u A roadmap-u; **ne radi se sada**; ide **posle A1, A2, A3**; posebno planiranje + posebno odobrenje pre implementacije; striktno po `FRONTEND_TECHNOLOGY_RESEARCH.md`; može oprezno dirati shared IDL/balance logic i `useVaultBalance.ts`; **Vault + Poker QA** obavezna |
 | **F3** | **F backlog** — **ne ulazi** u A (ni A1–A4) |
 | **Mint editable vs `VITE_MINT` lock** | **Kasnija UX odluka** — **ne ulazi** u A1/A2/A3/A4 |
-| **Redosled faza** | A1 → A2 → A3 → A4 |
+| **Redosled faza** | A1 → A2 → A3 → A4 (A1-test **cancelled/deferred** — nije deo trenutnog A roadmap execution-a) |
 | **Commit model** | **Jedan zaseban commit po fazi** (preporuka; korisnik potvrđuje pri startu faze) |
 | **Production granice** | Ne dirati `tableVault.ts`, Anchor account redosled, deposit/withdraw/ATA redosled, wallet provider, env, poker server, WS |
 
@@ -34,9 +35,9 @@ Organizovati Vault tab monolit [`solana/web/src/vault/VaultPlay.tsx`](../../sola
 
 | Faza | Scope | Rizik | QA | Status | Implementacija |
 |------|-------|-------|-----|--------|----------------|
-| **A1** | Pure helper-i (`humanToRaw`, format 1:1) | Nizak | Build + Vault tab smoke (bez tx) | **završena** — build + manual QA PASS | **Urađena** — pending commit |
-| **A1-test** | FE unit testovi za `vaultAmount.ts` | Nizak | Test runner PASS | planirana | Nije odobrena — tooling analiza |
-| **A2** | Presentation komponente; `VaultPlay` orchestrator | Nizak | Build + layout smoke Vault (+ tab switch) | planirana | Nije odobrena |
+| **A1** | Pure helper-i (`humanToRaw`, format 1:1) | Nizak | Build + Vault tab smoke (bez tx) | **DONE** — `be1eab3`, pushed | **Committed** |
+| **A1-test** | FE unit testovi za `vaultAmount.ts` | — | — | **Cancelled / deferred by user decision** | Nije deo trenutnog execution-a |
+| **A2** | Presentation komponente; `VaultPlay` orchestrator | Nizak | Build + layout smoke Vault (+ tab switch) | **sledeća planirana faza** | Nije odobrena |
 | **A3** | `useVaultPlay` — state, effects, handlers | Srednji | **Pun** Vault QA (connect, refresh, ATA, deposit, withdraw, greške) | planirana | Nije odobrena |
 | **A4** | Shared IDL / balance logic; može dirati `useVaultBalance.ts` | Srednji | **Vault + Poker** QA (prikaz „Dostupno u vault-u") | planirana kasnija faza | **Nije odobrena** — poseban plan pre starta |
 
@@ -191,11 +192,41 @@ export function humanToRaw(
 | Manual QA | Smoke gore — bez uočene regresije prikaza |
 | Commit | Jedan zaseban commit (kad korisnik odluči) |
 
-**Implementacija A1:** **Urađena** — `vaultAmount.ts` + `VaultPlay.tsx`; build PASS; manual QA PASS; **pending commit**.
+**Implementacija A1:** **DONE** — `vaultAmount.ts` + `VaultPlay.tsx`; build PASS; manual QA PASS; commit `be1eab3` pushed.
 
-**A1 verifikacija:** implementirana + build PASS + manual QA PASS — **pending commit**.
+**A1 verifikacija:** implementirana + build PASS + manual QA PASS — **committed + pushed** (`be1eab3`).
 
-### A1 implementacija (stvarno stanje)
+---
+
+## A1-test — istorijska napomena (cancelled / deferred)
+
+**Status:** **Cancelled / deferred by user decision** — nije deo trenutnog A roadmap execution-a.
+
+### Šta se desilo
+
+- Analiza FE unit test setup-a je rađena; razmatran je `tsx` + `node:test` uzor iz `poker/`.
+- Pokušaj pokretanja otkrio je **Node ESM / Anchor BN blocker**: `import { BN } from '@coral-xyz/anchor'` pada u `node --import tsx --test`, dok Vite build prolazi.
+- Korisnik je odlučio da se **A1-test ne radi sada** — bez package/test runner promena, bez production import/workaround promena.
+
+### Šta nije urađeno u A1-test fazi
+
+- Nema commit-a za A1-test.
+- Nema planiranih package promena (`solana/web/package.json`, `package-lock.json`, `tsx`, root `solana:web:test`) u trenutnom scope-u.
+- Nema FE unit test fajlova u production tree-u kao deo ove faze.
+
+### Pre-existing ponašanja (backlog notes — ne popravljaju se sada)
+
+Ova ponašanja su dokumentovana tokom A1-test analize; **nisu deo A1-test** jer je faza cancelled:
+
+| Ponašanje | Napomena |
+|-----------|----------|
+| `parseFloat("1abc")` prihvata numerički prefiks | pre-existing u `humanToRaw` |
+| `humanToRaw` može vratiti `BN(0)` za sitan pozitivan input | pre-existing `Math.round`; deposit `!raw` guard ne hvata BN objekat |
+| Samo prvi zarez se zamenjuje pre `parseFloat` | pre-existing u `humanToRaw` |
+
+---
+
+### A1 implementacija (stvarno stanje — DONE)
 
 | Stavka | Vrednost |
 |--------|----------|
@@ -225,7 +256,7 @@ Izdvojiti JSX blokove iz `VaultPlay.tsx` u presentation komponente (npr. vault c
 
 Build + Vault layout smoke + tab switch; **bez** obaveznog tx ako se handleri ne pomeraju.
 
-**Status:** planirana — detalji u budućem osvežavanju plana pre A2 starta.
+**Status:** **sledeća planirana faza** — detalji u budućem osvežavanju plana pre A2 starta.
 
 ---
 
@@ -291,7 +322,7 @@ F3 fix **ostaje van A4** osim ako korisnik posebno otvori F task.
 | `App.tsx`, poker moduli, WS, CSS | druge inicijative / van A |
 | Novi dependency-ji | zabranjeno |
 | FE unit testovi u A1 patch-u | nije deo A1 production scope-a |
-| FE unit testovi (`vaultAmount.ts`) | **nisu optional** — planirati u **A1-test / A1.5** (tooling analiza + testovi) |
+| FE unit testovi (`vaultAmount.ts`) | **A1-test cancelled/deferred** — nema package/test runner plana sada |
 
 ---
 
@@ -318,8 +349,9 @@ F3 fix **ostaje van A4** osim ako korisnik posebno otvori F task.
 |----------|-------------|------|-----|-----------|----------|--------|--------|
 | 3 | A | A1 | 🧹 | — | `humanToRaw` → `vaultAmount.ts` | DONE | implementirano |
 | 3 | A | A1 | 🧹 | — | `formatSolFromLamports` / `formatSplHumanAmount` | DONE | implementirano |
-| 3 | A | A1-test | 🧪 | — | FE unit testovi za `vaultAmount.ts` | proposed next phase | tooling analiza |
-| 3 | A | A2 | 🧹 | — | Presentation paneli | later phase | |
+| 3 | A | A1-test | 🧪 | — | FE unit testovi za `vaultAmount.ts` | cancelled / deferred by user decision | ne radi se sada |
+| 3 | A | A1-test | 🧪 | — | `tsx` + test skripta u `solana/web` | cancelled / deferred by user decision | ne radi se sada |
+| 3 | A | A2 | 🧹 | — | Presentation paneli | **sledeća planirana faza** | pre A2 plana |
 | 3 | A | A3 | 🧹 | — | `useVaultPlay` | later phase | |
 | 3 | A | A4 | 🧹 | — | Shared IDL / balance + `useVaultBalance.ts` | later phase — user approved roadmap | posebno odobrenje pre starta |
 | — | F | F3 | 🐞 | 🔀 | `loadTableVaultIdl` `response.ok` | F backlog | ne u A |
@@ -335,13 +367,13 @@ F3 fix **ostaje van A4** osim ako korisnik posebno otvori F task.
 | 1 | A1 helper scope — sva tri helpera u `vaultAmount.ts` | **DONE** |
 | 2 | A1 ime fajla — `vaultAmount.ts` | **DONE** |
 | 3 | A1 exporti — `humanToRaw`, `formatSolFromLamports`, `formatSplHumanAmount` | **DONE** |
-| 4 | Commit model po fazi — potvrda | pre prvog A1 commita |
-| 5 | **A1-test** — FE unit testovi za `vaultAmount.ts` (tooling analiza) | pre starta A1-test |
-| 6 | **A2** scope (broj panela) | pre A2 plana |
-| 7 | **A3** `useVaultPlay` API oblik | pre A3 plana |
-| 8 | **A4** detaljan plan + display parity strategija | posle A3, pre A4 |
-| 9 | Mint editable vs fixed | van A — kasnija UX odluka |
-| 10 | F3 — kada u F sprintu | van A |
+| 4 | Commit model po fazi — potvrda | **DONE** (A1) |
+| 5 | **A2** scope (broj panela / split) | **pre A2 plana** — sledeća aktivna odluka |
+| 6 | **A3** `useVaultPlay` API oblik | pre A3 plana |
+| 7 | **A4** detaljan plan + display parity strategija | posle A3, pre A4 |
+| 8 | Mint editable vs fixed | van A — kasnija UX odluka |
+| 9 | F3 — kada u F sprintu | van A |
+| — | A1-test — FE unit testovi / test runner | **cancelled / deferred** — nije aktivna odluka |
 
 ---
 
@@ -352,10 +384,10 @@ F3 fix **ostaje van A4** osim ako korisnik posebno otvori F task.
 | A1 implementacija | **Urađena** |
 | A1 build log | **PASS** — `frontend-build-pass-a1-1-of-1.log` |
 | A1 manual QA | **PASS** — `manual-qa-a1.md` |
-| A1-test (FE unit testovi) | **Nije** |
-| A2–A4 implementacija | **Nije** |
-| A1 git commit | **Nije** — pending |
-| Git push | **Nije** |
+| A1 git commit | **DONE** — `be1eab3` |
+| Git push | **DONE** — `origin/feature/refactor-web-vault-ui` |
+| A1-test (FE unit testovi) | **Cancelled / deferred by user decision** |
+| A2 presentation split | **Sledeća planirana faza** — čeka odobrenje |
 
 ---
 
@@ -377,7 +409,8 @@ task-evidence/fe-refactor-a-vault-ui/
 | Formalni plan A1–A4 | **Upisan** — ovaj fajl |
 | A4 u roadmap-u | **DA** — planirana kasnija faza, **nije** current implementation scope |
 | F3 | **F backlog** — van A |
-| A1 implementacija | **Urađena** — build PASS; manual QA PASS |
-| A1 verifikacija | **PASS** — pending commit |
-| A1 commit / push | **Nisu urađeni** |
-| Sledeća faza | **A1-test** (predlog) ili **A2** — korisnička odluka |
+| A1 implementacija | **DONE** — `be1eab3`, build + manual QA PASS |
+| A1 commit / push | **DONE** |
+| **A1-test** | **Cancelled / deferred by user decision** — nema package/test/production promena sada |
+| **A2** | **Sledeća planirana faza** — čeka odobrenje |
+| A3–A4 | Planirane kasnije faze |
